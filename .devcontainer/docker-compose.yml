@@ -1,0 +1,23 @@
+# Dev container: Node 22 workspace + Postgres + Azurite, all sharing one network namespace
+# so everything is reachable on localhost (matches api/.env.example).
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/typescript-node:22
+    volumes:
+      - ../..:/workspaces:cached
+    command: sleep infinity
+    network_mode: service:db
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: workbench
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite-blob --blobHost 0.0.0.0
+    network_mode: service:db
+volumes:
+  pgdata:

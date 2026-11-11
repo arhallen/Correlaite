@@ -29,17 +29,26 @@ Emails listed in `ADMIN_EMAILS` become admins on first sign-in. Set `ALLOW_SIGNU
 
 Sandbox safety: `/api/runs` returns 503 unless a sandbox pool is configured; generated code is never run in the API container.
 
-## Local development
+## Development without installing anything locally
+
+You do not need Node, npm or Python on your machine.
+
+- **GitHub Codespaces (easiest):** on the repo page choose Code -> Codespaces -> Create. The dev container
+  (`.devcontainer/`) starts Node 22, Postgres, Azurite, the Azure CLI and the GitHub CLI, and runs `npm install`.
+- **Local VS Code + Docker Desktop:** "Dev Containers: Reopen in Container". Everything still runs inside containers.
+- **Lockfiles:** run the **Update lockfiles** workflow once (Actions tab). It commits `package-lock.json` for `api/` and `frontend/`,
+  which CI and the Docker build (`npm ci`) need.
+
+Inside the dev container:
 
 ```bash
-docker compose up -d                 # Postgres + Azurite
-cd api && cp .env.example .env && npm install && npm run dev      # http://localhost:8080 (loads .env automatically)
-cd frontend && npm install && npm run dev                          # http://localhost:5173
+cd api && npm run dev          # http://localhost:8080 (loads api/.env, created from .env.example)
+cd frontend && npm run dev     # http://localhost:5173
 ```
-Sign-in links are printed in the API console when email is not configured. The sandbox is not emulated locally,
-so "Generate & run" needs a real session pool (set `SANDBOX_POOL_ENDPOINT`, `AZURE_OPENAI_*`, and `az login`).
 
-Commit the generated `package-lock.json` files; CI and the Docker build use `npm ci`.
+Sign-in links are printed in the API console when email is not configured. The sandbox is not emulated, so
+"Generate & run" needs a real session pool (`SANDBOX_POOL_ENDPOINT`, `AZURE_OPENAI_*`, and `az login`).
+`docker-compose.yml` at the repo root is the same Postgres + Azurite pair for people who run the apps on the host.
 
 ## Deploy
 

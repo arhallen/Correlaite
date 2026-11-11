@@ -1,0 +1,27 @@
+name: Update lockfiles
+
+# Run manually (Actions tab -> "Update lockfiles" -> Run workflow) to generate or refresh package-lock.json
+# without installing Node locally. Commits the result to the branch it was run on.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        working-directory: api
+      - run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        working-directory: frontend
+      - name: Commit lockfiles
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add api/package-lock.json frontend/package-lock.json
+          git diff --cached --quiet && echo "No changes" || (git commit -m "chore: update lockfiles" && git push)

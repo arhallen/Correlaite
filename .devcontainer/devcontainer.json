@@ -1,0 +1,17 @@
+{
+  "name": "Correlaite",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
+  "features": {
+    "ghcr.io/devcontainers/features/azure-cli:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "forwardPorts": [5173, 8080],
+  "postCreateCommand": "cp -n api/.env.example api/.env; (cd api && npm install) && (cd frontend && npm install)",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-azuretools.vscode-bicep", "dbaeumer.vscode-eslint", "GitHub.vscode-github-actions"]
+    }
+  }
+}
