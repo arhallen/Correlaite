@@ -39,3 +39,7 @@ export interface AdminUser {
   last_login_at: string | null; runs: number;
 }
 export interface AdminRun { id: string; email: string; prompt: string; status: string; duration_ms: number | null; created_at: string }
+export type Preview =
+  | { kind: 'table'; filename: string; meta: Record<string, string>; columns: string[]; rows: string[][]; total: number }
+  | { kind: 'text'; filename: string; text: string; truncated: boolean }
+  | { kind: 'binary'; filename: string };

@@ -81,3 +81,32 @@ export async function fetchSeries(r: AvRequest): Promise<{ data: Buffer; rows: n
   if (!c.ok) throw new HttpError(502, c.message);
   return { data, rows: c.rows };
 }
+
+export interface Table {
+  meta: Record<string, string>;
+  columns: string[];
+  rows: string[][];
+  total: number;
+}
+
+const cleanKey = (k: string) => k.replace(/^\d+[a-z]?\.\s*/i, '');
+
+/** Turns a stored Alpha Vantage response into a table (newest first) for the viewer. */
+export function toTable(body: any, limit = 500): Table | null {
+  const entry = Object.entries(body ?? {}).find(([k, v]) => k.startsWith('Time Series') && v && typeof v === 'object');
+  if (!entry) return null;
+  const series = entry[1] as Record<string, Record<string, unknown>>;
+  const dates = Object.keys(series).sort().reverse();
+  const columns: string[] = [];
+  for (const d of dates.slice(0, limit)) {
+    for (const k of Object.keys(series[d] ?? {})) if (!columns.includes(k)) columns.push(k);
+  }
+  const meta: Record<string, string> = {};
+  for (const [k, v] of Object.entries(body['Meta Data'] ?? {})) meta[cleanKey(k)] = String(v);
+  return {
+    meta,
+    columns: ['date', ...columns.map(cleanKey)],
+    rows: dates.slice(0, limit).map((d) => [d, ...columns.map((c) => String(series[d]?.[c] ?? ''))]),
+    total: dates.length,
+  };
+}

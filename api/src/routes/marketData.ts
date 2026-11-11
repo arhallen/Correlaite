@@ -5,8 +5,8 @@ import { q } from '../db.js';
 import { config } from '../config.js';
 import { requireUser } from '../auth.js';
 import { HttpError } from '../errors.js';
-import { deleteBlob, putBlob } from '../storage.js';
-import { fetchSeries, makeFilename, publicParams, requestSchema, alphaVantageConfigured } from '../alphavantage.js';
+import { deleteBlob, getBlob, putBlob } from '../storage.js';
+import { fetchSeries, makeFilename, publicParams, requestSchema, alphaVantageConfigured, toTable } from '../alphavantage.js';
 
 // Never selects blob_path or the requester: users only see what was downloaded, not where it is stored or by whom.
 const LIST = `select id, function, symbol, market, params, filename, size_bytes::float8 as size_bytes, row_count, created_at,
@@ -43,6 +43,27 @@ export default async function marketDataRoutes(app: FastifyInstance) {
     );
     await q("insert into usage_events(user_id, kind, meta) values ($1, 'alphavantage_download', $2)", [user.id, JSON.stringify({ function: r.function })]);
     return (await q(`${LIST} where id = $2`, [user.id, ins.rows[0].id])).rows[0];
+  });
+
+  // Viewer: the stored JSON as a table (newest first, first 500 rows).
+  app.get('/market-data/:id/preview', { preHandler: requireUser }, async (req) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const row = (await q('select filename, blob_path from market_data where id = $1', [id])).rows[0];
+    if (!row) throw new HttpError(404, 'Not found');
+    const table = toTable(JSON.parse((await getBlob(row.blob_path)).toString('utf8')));
+    if (!table) throw new HttpError(422, 'This file has no time series to show');
+    return { filename: row.filename, kind: 'table', ...table };
+  });
+
+  app.get('/market-data/:id/download', { preHandler: requireUser }, async (req, reply) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const row = (await q('select filename, blob_path from market_data where id = $1', [id])).rows[0];
+    if (!row) throw new HttpError(404, 'Not found');
+    return reply
+      .header('Content-Type', 'application/json')
+      .header('Content-Disposition', `attachment; filename="${row.filename.replace(/"/g, '')}"`)
+      .header('X-Content-Type-Options', 'nosniff')
+      .send(await getBlob(row.blob_path));
   });
 
   // Catalog files are shared, so only the person who downloaded one (or an admin) may remove it.

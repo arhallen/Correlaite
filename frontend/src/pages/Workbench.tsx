@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Dataset, type MarketFile, type MarketList, type Run } from '../api';
 import { describe, fmtDate, fmtSize } from './MarketData';
+import FileViewer from './FileViewer';
 
 export default function Workbench() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
@@ -9,6 +10,7 @@ export default function Workbench() {
   const [market, setMarket] = useState<MarketFile[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [selectedMarket, setSelectedMarket] = useState<string[]>([]);
+  const [viewing, setViewing] = useState<{ base: string; title: string } | null>(null);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -70,6 +72,7 @@ export default function Workbench() {
                 <input type="checkbox" checked={selected.includes(d.id)} onChange={() => toggle(setSelected, d.id)} />
                 <span>{d.filename} <span className="muted">{fmtSize(d.size_bytes)}</span></span>
               </label>
+              <button className="link" onClick={() => setViewing({ base: `/datasets/${d.id}`, title: d.filename })}>View</button>
               <button className="link danger" onClick={() => remove(d.id)} aria-label={`Delete ${d.filename}`}>✕</button>
             </li>
           ))}
@@ -84,6 +87,7 @@ export default function Workbench() {
                 <input type="checkbox" checked={selectedMarket.includes(f.id)} onChange={() => toggle(setSelectedMarket, f.id)} />
                 <span>{f.function}<br /><span className="muted small">{describe(f)} · {fmtDate(f.created_at)}</span></span>
               </label>
+              <button className="link" onClick={() => setViewing({ base: `/market-data/${f.id}`, title: `${f.function} ${describe(f)}` })}>View</button>
             </li>
           ))}
           {market.length === 0 && <li className="muted">Nothing downloaded yet.</li>}
@@ -141,6 +145,7 @@ export default function Workbench() {
           </article>
         ))}
       </section>
+      {viewing && <FileViewer base={viewing.base} title={viewing.title} onClose={() => setViewing(null)} />}
     </div>
   );
 }

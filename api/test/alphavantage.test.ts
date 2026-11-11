@@ -33,3 +33,15 @@ test('classifyBody spots errors, rate limits and good data', () => {
   const ok = classifyBody({ 'Meta Data': {}, 'Time Series (Daily)': { '2026-11-10': {}, '2026-11-09': {} } });
   assert.deepEqual(ok, { ok: true, rows: 2 });
 });
+
+import { toTable } from '../src/alphavantage.js';
+test('toTable lists newest first with cleaned column names', () => {
+  const t = toTable({
+    'Meta Data': { '1. Information': 'Daily', '2. Symbol': 'AAPL' },
+    'Time Series (Daily)': { '2026-11-09': { '1. open': '1', '4. close': '2' }, '2026-11-10': { '1. open': '3', '4. close': '4' } },
+  });
+  assert.deepEqual(t?.columns, ['date', 'open', 'close']);
+  assert.deepEqual(t?.rows[0], ['2026-11-10', '3', '4']);
+  assert.equal(t?.meta.Symbol, 'AAPL');
+  assert.equal(toTable({ nothing: 1 }), null);
+});
