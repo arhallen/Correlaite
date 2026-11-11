@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type MarketFile, type MarketList } from '../api';
+import FileViewer from './FileViewer';
 
 export const fmtSize = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 export const fmtDate = (s: string) => new Date(s).toLocaleString();
@@ -21,6 +22,7 @@ export default function MarketData() {
   const [outputsize, setOutputsize] = useState('compact');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [viewing, setViewing] = useState<MarketFile | null>(null);
 
   const load = useCallback(async () => setData(await api<MarketList>('/market-data')), []);
   useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
@@ -92,8 +94,8 @@ export default function MarketData() {
           <tbody>
             {data.items.map((f) => (
               <tr key={f.id}>
-                <td>{f.function}</td>
-                <td>{describe(f)}</td>
+                <td><button className="link" onClick={() => setViewing(f)}>{f.function}</button></td>
+                <td><button className="link" onClick={() => setViewing(f)}>{describe(f)}</button></td>
                 <td>{fmtDate(f.created_at)}</td>
                 <td>{f.row_count ?? '–'}</td>
                 <td>{fmtSize(f.size_bytes)}</td>
@@ -104,6 +106,7 @@ export default function MarketData() {
           </tbody>
         </table>
       </div>
+      {viewing && <FileViewer base={`/market-data/${viewing.id}`} title={`${viewing.function} ${describe(viewing)}`} onClose={() => setViewing(null)} />}
     </>
   );
 }
