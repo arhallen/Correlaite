@@ -6,8 +6,12 @@ import FileViewer from './FileViewer';
 export const fmtSize = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 export const fmtDate = (s: string) => new Date(s).toLocaleString();
 /** Non-secret request parameters as shown to users, e.g. "BTC / USD". */
+export const kindLabel = (f: MarketFile) => (f.function === 'DIGITAL_CURRENCY_DAILY' ? 'CRYPTO' : 'STOCK');
+/** Symbol first, then market and other parameters, e.g. "BTC / USD". */
 export const describe = (f: MarketFile) =>
   [f.symbol, f.market, ...Object.entries(f.params).map(([k, v]) => `${k}=${v}`)].filter(Boolean).join(' / ');
+/** Full display name: symbol / market · downloaded date and time · STOCK or CRYPTO. */
+export const fullName = (f: MarketFile) => `${describe(f)} · ${fmtDate(f.created_at)} · ${kindLabel(f)}`;
 
 const FUNCTIONS = [
   { value: 'TIME_SERIES_DAILY', label: 'Stock daily (TIME_SERIES_DAILY)', market: false },
@@ -89,24 +93,26 @@ export default function MarketData() {
         <h2>Downloaded files</h2>
         <table>
           <thead>
-            <tr><th>Function</th><th>Parameters</th><th>Downloaded</th><th>Rows</th><th>Size</th><th /></tr>
+            <tr><th>Symbol</th><th>Market</th><th>Options</th><th>Downloaded</th><th>Type</th><th>Rows</th><th>Size</th><th /></tr>
           </thead>
           <tbody>
             {data.items.map((f) => (
               <tr key={f.id}>
-                <td><button className="link" onClick={() => setViewing(f)}>{f.function}</button></td>
-                <td><button className="link" onClick={() => setViewing(f)}>{describe(f)}</button></td>
+                <td><button className="link" onClick={() => setViewing(f)}>{f.symbol}</button></td>
+                <td>{f.market ?? '–'}</td>
+                <td>{Object.entries(f.params).map(([k, v]) => `${k}=${v}`).join(', ') || '–'}</td>
                 <td>{fmtDate(f.created_at)}</td>
+                <td>{kindLabel(f)}</td>
                 <td>{f.row_count ?? '–'}</td>
                 <td>{fmtSize(f.size_bytes)}</td>
                 <td className="actions">{f.mine && <button className="link danger" onClick={() => remove(f)}>Delete</button>}</td>
               </tr>
             ))}
-            {data.items.length === 0 && <tr><td colSpan={6} className="muted">Nothing downloaded yet.</td></tr>}
+            {data.items.length === 0 && <tr><td colSpan={8} className="muted">Nothing downloaded yet.</td></tr>}
           </tbody>
         </table>
       </div>
-      {viewing && <FileViewer base={`/market-data/${viewing.id}`} title={`${viewing.function} ${describe(viewing)}`} onClose={() => setViewing(null)} />}
+      {viewing && <FileViewer base={`/market-data/${viewing.id}`} title={fullName(viewing)} onClose={() => setViewing(null)} />}
     </>
   );
 }
