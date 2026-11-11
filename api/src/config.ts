@@ -20,6 +20,8 @@ const schema = z.object({
   AZURE_OPENAI_DEPLOYMENT: z.string().optional(),
   AZURE_OPENAI_API_VERSION: z.string().default('2024-10-21'),
   AZURE_OPENAI_API_KEY: z.string().optional(),
+  ALPHAVANTAGE_API_KEY: z.string().optional(),
+  ALPHAVANTAGE_DAILY_DOWNLOAD_LIMIT: z.coerce.number().default(10),
   DAILY_RUN_LIMIT: z.coerce.number().default(50),
   MAX_UPLOAD_MB: z.coerce.number().default(25),
 });

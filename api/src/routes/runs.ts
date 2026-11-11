@@ -9,7 +9,12 @@ import { downloadFile, executeCode, listFiles, sandboxConfigured, uploadFile } f
 import { getBlob, putBlob } from '../storage.js';
 import { safeFilename } from '../util.js';
 
-const body = z.object({ prompt: z.string().trim().min(1).max(4000), datasetId: z.string().uuid().optional() });
+const body = z.object({
+  prompt: z.string().trim().min(1).max(4000),
+  datasetId: z.string().uuid().optional(), // legacy single selection
+  datasetIds: z.array(z.string().uuid()).max(10).default([]),
+  marketDataIds: z.array(z.string().uuid()).max(10).default([]),
+});
 const MAX_OUTPUT_FILES = 20;
 const MAX_OUTPUT_BYTES = 25 * 1024 * 1024;
 const TYPES: Record<string, string> = {
@@ -20,7 +25,7 @@ const TYPES: Record<string, string> = {
 const typeOf = (name: string) => TYPES[name.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream';
 const FILES = `coalesce((select json_agg(json_build_object('id', f.id, 'filename', f.filename, 'content_type', f.content_type, 'size_bytes', f.size_bytes) order by f.filename)
   from run_files f where f.run_id = runs.id), '[]'::json) as files`;
-const COLS = `id, dataset_id, prompt, code, status, stdout, stderr, result, duration_ms, created_at, ${FILES}`;
+const COLS = `id, dataset_id, dataset_ids, market_data_ids, prompt, code, status, stdout, stderr, result, duration_ms, created_at, ${FILES}`;
 
 export default async function runRoutes(app: FastifyInstance) {
   app.get('/runs', { preHandler: requireUser }, async (req) => {
@@ -59,40 +64,60 @@ export default async function runRoutes(app: FastifyInstance) {
     ).rows[0].n;
     if (used >= config.DAILY_RUN_LIMIT) throw new HttpError(429, 'Daily run limit reached');
 
-    let dataset: { filename: string; blob_path: string } | null = null;
-    if (b.datasetId) {
-      dataset = (await q('select filename, blob_path from datasets where id = $1 and user_id = $2', [b.datasetId, user.id])).rows[0] ?? null;
-      if (!dataset) throw new HttpError(404, 'Dataset not found');
+    const datasetIds = [...new Set([...b.datasetIds, ...(b.datasetId ? [b.datasetId] : [])])];
+    const marketDataIds = [...new Set(b.marketDataIds)];
+    if (datasetIds.length + marketDataIds.length > 10) throw new HttpError(400, 'Select at most 10 files');
+
+    // Own datasets are private: always filter by user. Catalog files are shared.
+    const picked: { filename: string; blob_path: string }[] = [];
+    if (datasetIds.length) {
+      const found = (await q('select id, filename, blob_path from datasets where id = any($1) and user_id = $2', [datasetIds, user.id])).rows;
+      if (found.length !== datasetIds.length) throw new HttpError(404, 'Dataset not found');
+      picked.push(...datasetIds.map((id) => found.find((f) => f.id === id)!));
     }
+    if (marketDataIds.length) {
+      const found = (await q('select id, filename, blob_path from market_data where id = any($1)', [marketDataIds])).rows;
+      if (found.length !== marketDataIds.length) throw new HttpError(404, 'Market data file not found');
+      picked.push(...marketDataIds.map((id) => found.find((f) => f.id === id)!));
+    }
+    // Distinct names inside the sandbox, so two files called data.csv do not overwrite each other.
+    const seen = new Map<string, number>();
+    const inputFiles = picked.map((f) => {
+      const n = seen.get(f.filename) ?? 0;
+      seen.set(f.filename, n + 1);
+      const dot = f.filename.lastIndexOf('.');
+      const filename = n === 0 ? f.filename : dot > 0 ? `${f.filename.slice(0, dot)}_${n + 1}${f.filename.slice(dot)}` : `${f.filename}_${n + 1}`;
+      return { filename, blob_path: f.blob_path };
+    });
 
     const run = (
-      await q("insert into runs(user_id, dataset_id, prompt, status) values ($1,$2,$3,'running') returning id", [
-        user.id,
-        b.datasetId ?? null,
-        b.prompt,
-      ])
+      await q(
+        "insert into runs(user_id, dataset_id, dataset_ids, market_data_ids, prompt, status) values ($1,$2,$3,$4,$5,'running') returning id",
+        [user.id, datasetIds[0] ?? null, datasetIds, marketDataIds, b.prompt],
+      )
     ).rows[0];
 
     let tokens = 0;
     try {
-      const gen = await generateCode(b.prompt, dataset);
+      const gen = await generateCode(b.prompt, inputFiles);
       tokens = gen.tokens;
       await q('update runs set code = $2 where id = $1', [run.id, gen.code]);
 
       const identifier = `run-${run.id}`; // fresh sandbox session per run
-      if (dataset) {
-        await uploadFile(identifier, dataset.filename, await getBlob(dataset.blob_path));
-        const files = await listFiles(identifier).catch((e) => { req.log.warn(e, 'sandbox file listing failed'); return null; });
-        req.log.info({ identifier, dataset: dataset.filename, files }, 'dataset uploaded to sandbox');
-        if (files && !files.some((f) => f.endsWith(dataset!.filename))) {
-          throw new HttpError(502, `Dataset ${dataset.filename} did not arrive in the sandbox`);
-        }
+      for (const f of inputFiles) {
+        await uploadFile(identifier, f.filename, await getBlob(f.blob_path));
+      }
+      if (inputFiles.length) {
+        const present = await listFiles(identifier).catch((e) => { req.log.warn(e, 'sandbox file listing failed'); return null; });
+        req.log.info({ identifier, files: inputFiles.map((f) => f.filename), present }, 'input files uploaded to sandbox');
+        const missing = present ? inputFiles.filter((f) => !present.some((p) => p.endsWith(f.filename))) : [];
+        if (missing.length) throw new HttpError(502, `File ${missing[0].filename} did not arrive in the sandbox`);
       }
       const res = await executeCode(identifier, gen.code);
 
       // Collect files the code produced (charts, CSVs, ...) so they are available on the website.
       try {
-        const inputs = new Set(dataset ? [dataset.filename] : []);
+        const inputs = new Set(inputFiles.map((f) => f.filename));
         let total = 0;
         let count = 0;
         for (const name of await listFiles(identifier)) {

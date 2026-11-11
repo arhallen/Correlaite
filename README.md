@@ -29,6 +29,13 @@ Emails listed in `ADMIN_EMAILS` become admins on first sign-in. Set `ALLOW_SIGNU
 
 Sandbox safety: `/api/runs` returns 503 unless a sandbox pool is configured; generated code is never run in the API container.
 
+## Market data (Alpha Vantage)
+
+Signed-in users can download daily stock (`TIME_SERIES_DAILY`) and crypto (`DIGITAL_CURRENCY_DAILY`) series on the *Market data* page.
+Downloads are stored as JSON in Blob Storage and listed in a shared catalog (function, symbol, market, other parameters, download time).
+The API key lives only on the server (`ALPHAVANTAGE_API_KEY`, from the GitHub secret of the same name) and is never stored in the catalog or returned to the browser.
+Users pick catalog files and/or their own private uploads (multi-select) in the workbench. Downloads are limited per user (`ALPHAVANTAGE_DAILY_DOWNLOAD_LIMIT`, default 10/day).
+
 ## Development without installing anything locally
 
 You do not need Node, npm or Python on your machine.
