@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Verify from './pages/Verify';
 import Workbench from './pages/Workbench';
 import Admin from './pages/Admin';
+import Landing from './pages/Landing';
 
 function Protected({ children, admin }: { children: ReactElement; admin?: boolean }) {
   const { user, loading } = useAuth();
@@ -14,13 +15,24 @@ function Protected({ children, admin }: { children: ReactElement; admin?: boolea
   return children;
 }
 
+// Remember that this browser had a session, so signed-in users see a spinner (not the landing page) while /me loads.
+const hadSession = () => { try { return localStorage.getItem('hadSession') === '1'; } catch { return false; } };
+
+function Home() {
+  const { user, loading } = useAuth();
+  if (user) return <Workbench />;
+  if (loading && hadSession()) return <p className="muted center">Loading…</p>;
+  return <Landing />;
+}
+
 export default function App() {
   const { user, logout } = useAuth();
   return (
     <>
       <header className="bar">
-        <Link to="/" className="brand">Correlaite</Link>
+        <Link to="/" className="brand"><img src="/logo.svg" alt="" width="26" height="26" />Correlaite</Link>
         <nav>
+          {!user && <Link to="/login">Sign in</Link>}
           {user?.role === 'admin' && <Link to="/admin">Admin</Link>}
           {user && (
             <>
@@ -34,7 +46,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/auth/verify" element={<Verify />} />
-          <Route path="/" element={<Protected><Workbench /></Protected>} />
+          <Route path="/" element={<Home />} />
           <Route path="/admin" element={<Protected admin><Admin /></Protected>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

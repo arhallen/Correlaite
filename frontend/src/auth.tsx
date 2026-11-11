@@ -15,6 +15,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    try { if (user) localStorage.setItem('hadSession', '1'); else if (!loading) localStorage.removeItem('hadSession'); } catch { /* ignore */ }
+  }, [user, loading]);
+
+  useEffect(() => {
     api<User>('/me')
       .then(setUser)
       .catch((e) => { if (!(e instanceof ApiError && e.status === 401)) console.error(e); })
