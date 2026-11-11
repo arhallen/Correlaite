@@ -1,0 +1,26 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  staging:
+    uses: ./.github/workflows/_deploy.yml
+    with: { environment: staging }
+    secrets: inherit
+
+  production:
+    needs: staging
+    uses: ./.github/workflows/_deploy.yml
+    with: { environment: production } # add required reviewers on the "production" GitHub environment for manual approval
+    secrets: inherit

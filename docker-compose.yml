@@ -1,0 +1,15 @@
+# Local dev dependencies: Postgres + Azurite (Azure Blob emulator)
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: workbench
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    command: azurite-blob --blobHost 0.0.0.0
+    ports: ["10000:10000"]
+volumes:
+  pgdata:
