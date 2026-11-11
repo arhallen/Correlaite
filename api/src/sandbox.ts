@@ -20,7 +20,7 @@ const url = (path: string, identifier: string) =>
 
 export async function uploadFile(identifier: string, filename: string, data: Buffer) {
   const form = new FormData();
-  form.append('file', new Blob([data]), filename);
+  form.append("file", new Blob([new Uint8Array(data)]), filename);
   const res = await fetch(url('files/upload', identifier), { method: 'POST', headers: await auth(), body: form });
   if (!res.ok) throw new HttpError(502, `Sandbox upload failed (${res.status})`);
 }
