@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Verify from './pages/Verify';
 import Workbench from './pages/Workbench';
 import Admin from './pages/Admin';
+import MarketData from './pages/MarketData';
 import Landing from './pages/Landing';
 
 function Protected({ children, admin }: { children: ReactElement; admin?: boolean }) {
@@ -33,6 +34,7 @@ export default function App() {
         <Link to="/" className="brand"><img src="/logo.svg" alt="" width="26" height="26" />Correlaite</Link>
         <nav>
           {!user && <Link to="/login">Sign in</Link>}
+          {user && <Link to="/market-data">Market data</Link>}
           {user?.role === 'admin' && <Link to="/admin">Admin</Link>}
           {user && (
             <>
@@ -47,6 +49,7 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/auth/verify" element={<Verify />} />
           <Route path="/" element={<Home />} />
+          <Route path="/market-data" element={<Protected><MarketData /></Protected>} />
           <Route path="/admin" element={<Protected admin><Admin /></Protected>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

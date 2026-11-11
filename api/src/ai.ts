@@ -8,7 +8,8 @@ const cred = new DefaultAzureCredential();
 const SYSTEM = `You write Python 3 code that runs in an isolated sandbox WITHOUT internet access.
 Rules:
 - Output ONLY one fenced python code block, no explanation.
-- If the task names a dataset file, use exactly that path (it is in /mnt/data/). Inspect it before using it (columns, dtypes). Supported formats: csv, tsv, json, xlsx, parquet, txt - choose the reader from the file extension.
+- If the task lists files, use exactly those paths (they are in /mnt/data/). Inspect each before using it (columns, dtypes). Supported formats: csv, tsv, json, xlsx, parquet, txt - choose the reader from the file extension.
+- Files named TIME_SERIES_DAILY_* or DIGITAL_CURRENCY_DAILY_* are raw Alpha Vantage JSON responses: a 'Meta Data' object plus one 'Time Series ...' object keyed by date. Load with json, then build a DataFrame (index = date).
 - If the task says no dataset is attached, do not search the filesystem for data: either generate sample data if the task allows, or print a short message saying no dataset is attached.
 - pandas, numpy, matplotlib are available. Do not pip install anything. Do not make network calls.
 - Print the results you want the user to see. For charts, save PNG files to /mnt/data/ and print their filenames.`;
@@ -18,7 +19,7 @@ export interface Generated {
   tokens: number;
 }
 
-export async function generateCode(prompt: string, dataset: { filename: string } | null): Promise<Generated> {
+export async function generateCode(prompt: string, files: { filename: string }[]): Promise<Generated> {
   const { AZURE_OPENAI_ENDPOINT: endpoint, AZURE_OPENAI_DEPLOYMENT: deployment } = config;
   if (!endpoint || !deployment) throw new HttpError(503, 'AI model is not configured');
 
@@ -26,7 +27,9 @@ export async function generateCode(prompt: string, dataset: { filename: string }
   if (config.AZURE_OPENAI_API_KEY) headers['api-key'] = config.AZURE_OPENAI_API_KEY;
   else headers.Authorization = `Bearer ${(await cred.getToken('https://cognitiveservices.azure.com/.default')).token}`;
 
-  const user = dataset ? `Dataset file: /mnt/data/${dataset.filename}\n\nTask: ${prompt}` : `No dataset is attached.\n\nTask: ${prompt}`;
+  const user = files.length
+    ? `Files:\n${files.map((f) => `- /mnt/data/${f.filename}`).join('\n')}\n\nTask: ${prompt}`
+    : `No dataset is attached.\n\nTask: ${prompt}`;
   const res = await fetch(
     `${endpoint.replace(/\/$/, '')}/openai/deployments/${deployment}/chat/completions?api-version=${config.AZURE_OPENAI_API_VERSION}`,
     {

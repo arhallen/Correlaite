@@ -42,6 +42,10 @@ param openAiDeploymentName string = 'codegen'
 param azureOpenAiEndpoint string = ''
 param azureOpenAiDeployment string = ''
 
+@secure()
+@description('Alpha Vantage API key (GitHub secret ALPHAVANTAGE_API_KEY); leave empty to disable market data downloads')
+param alphaVantageApiKey string = ''
+
 var suffix = uniqueString(resourceGroup().id)
 var base = '${namePrefix}-${environmentName}'
 var compact = toLower('${namePrefix}${take(environmentName, 4)}${take(suffix, 6)}')
@@ -311,16 +315,24 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
           identity: identity.id
         }
       ]
-      secrets: [
-        {
-          name: 'database-url'
-          value: 'postgres://wbadmin:${uriComponent(postgresAdminPassword)}@${postgres.properties.fullyQualifiedDomainName}:5432/correlaite'
-        }
-        {
-          name: 'acs-connection'
-          value: acs.listKeys().primaryConnectionString
-        }
-      ]
+      secrets: concat(
+        [
+          {
+            name: 'database-url'
+            value: 'postgres://wbadmin:${uriComponent(postgresAdminPassword)}@${postgres.properties.fullyQualifiedDomainName}:5432/correlaite'
+          }
+          {
+            name: 'acs-connection'
+            value: acs.listKeys().primaryConnectionString
+          }
+        ],
+        empty(alphaVantageApiKey) ? [] : [
+          {
+            name: 'alphavantage-key'
+            value: alphaVantageApiKey
+          }
+        ]
+      )
     }
     template: {
       containers: [
@@ -331,7 +343,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.5')
             memory: '1Gi'
           }
-          env: [
+          env: concat([
             { name: 'NODE_ENV', value: 'production' }
             { name: 'PORT', value: '8080' }
             { name: 'APP_URL', value: publicUrl }
@@ -347,7 +359,9 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AZURE_OPENAI_DEPLOYMENT', value: createOpenAi ? openAiDeployment.name : azureOpenAiDeployment }
             { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
-          ]
+          ], empty(alphaVantageApiKey) ? [] : [
+            { name: 'ALPHAVANTAGE_API_KEY', secretRef: 'alphavantage-key' }
+          ])
         }
       ]
       scale: {

@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api, type Dataset, type Run } from '../api';
-
-const fmtSize = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
+import { Link } from 'react-router-dom';
+import { api, type Dataset, type MarketFile, type MarketList, type Run } from '../api';
+import { describe, fmtDate, fmtSize } from './MarketData';
 
 export default function Workbench() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
-  const [selected, setSelected] = useState('');
+  const [market, setMarket] = useState<MarketFile[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [selectedMarket, setSelectedMarket] = useState<string[]>([]);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
   const load = useCallback(async () => {
-    const [d, r] = await Promise.all([api<Dataset[]>('/datasets'), api<Run[]>('/runs')]);
+    const [d, r, m] = await Promise.all([api<Dataset[]>('/datasets'), api<Run[]>('/runs'), api<MarketList>('/market-data')]);
     setDatasets(d);
+    setMarket(m.items);
+    setSelectedMarket((x) => x.filter((id) => m.items.some((f) => f.id === id)));
     setRuns(r);
   }, []);
   useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
@@ -26,21 +30,25 @@ export default function Workbench() {
     try {
       const d = await api<Dataset>('/datasets', { method: 'POST', body: form });
       setDatasets((x) => [d, ...x]);
-      setSelected(d.id);
+      setSelected((x) => [...x, d.id]);
     } catch (e) { setError((e as Error).message); }
   }
 
   async function remove(id: string) {
     await api(`/datasets/${id}`, { method: 'DELETE' }).catch((e) => setError(e.message));
-    if (selected === id) setSelected('');
+    setSelected((x) => x.filter((i) => i !== id));
     load().catch(() => {});
   }
+
+  const toggle = (set: typeof setSelected, id: string) =>
+    set((x) => (x.includes(id) ? x.filter((i) => i !== id) : [...x, id]));
+  const count = selected.length + selectedMarket.length;
 
   async function run() {
     setBusy(true);
     setError('');
     try {
-      const r = await api<Run>('/runs', { method: 'POST', json: { prompt, datasetId: selected || undefined } });
+      const r = await api<Run>('/runs', { method: 'POST', json: { prompt, datasetIds: selected, marketDataIds: selectedMarket } });
       setRuns((x) => [r, ...x]);
       setPrompt('');
     } catch (e) { setError((e as Error).message); }
@@ -57,14 +65,28 @@ export default function Workbench() {
         </label>
         <ul className="list">
           {datasets.map((d) => (
-            <li key={d.id} className={d.id === selected ? 'sel' : ''}>
-              <button className="link" onClick={() => setSelected(d.id === selected ? '' : d.id)}>
-                {d.filename} <span className="muted">{fmtSize(d.size_bytes)}</span>
-              </button>
+            <li key={d.id} className={selected.includes(d.id) ? 'sel' : ''}>
+              <label className="check">
+                <input type="checkbox" checked={selected.includes(d.id)} onChange={() => toggle(setSelected, d.id)} />
+                <span>{d.filename} <span className="muted">{fmtSize(d.size_bytes)}</span></span>
+              </label>
               <button className="link danger" onClick={() => remove(d.id)} aria-label={`Delete ${d.filename}`}>✕</button>
             </li>
           ))}
           {datasets.length === 0 && <li className="muted">No datasets yet.</li>}
+        </ul>
+
+        <h2 className="section">Market data <Link to="/market-data" className="small">manage</Link></h2>
+        <ul className="list">
+          {market.map((f) => (
+            <li key={f.id} className={selectedMarket.includes(f.id) ? 'sel' : ''}>
+              <label className="check">
+                <input type="checkbox" checked={selectedMarket.includes(f.id)} onChange={() => toggle(setSelectedMarket, f.id)} />
+                <span>{f.function}<br /><span className="muted small">{describe(f)} · {fmtDate(f.created_at)}</span></span>
+              </label>
+            </li>
+          ))}
+          {market.length === 0 && <li className="muted">Nothing downloaded yet.</li>}
         </ul>
       </aside>
 
@@ -75,10 +97,12 @@ export default function Workbench() {
             rows={4}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder={selected ? 'e.g. Summarise this dataset and plot the distribution of each numeric column' : 'Select a dataset, or just ask for some analysis…'}
+            placeholder={count ? 'e.g. Summarise the selected files and plot the distribution of each numeric column' : 'Select one or more files, or just ask for some analysis…'}
           />
           <p className="muted">
-            {selected ? `Dataset: ${datasets.find((d) => d.id === selected)?.filename ?? ''}` : datasets.length ? 'No dataset selected — click one in the list to attach it.' : 'No dataset attached.'}
+            {count
+              ? `Attached: ${[...datasets.filter((d) => selected.includes(d.id)).map((d) => d.filename), ...market.filter((f) => selectedMarket.includes(f.id)).map((f) => `${f.function} ${describe(f)}`)].join(', ')}`
+              : datasets.length || market.length ? 'No files selected — tick one or more in the lists to attach them.' : 'No dataset attached.'}
           </p>
           <div className="row">
             <button disabled={busy || !prompt.trim()} onClick={run}>{busy ? 'Running…' : 'Generate & run'}</button>

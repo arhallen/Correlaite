@@ -61,3 +61,8 @@ td.actions { white-space: nowrap; }
 .feature .icon { font-size: 26px; margin-bottom: 8px; }
 .feature p { margin: 0; }
 .how ol { padding-left: 20px; margin: 0 0 16px; display: grid; gap: 6px; }
+
+select, input:not([type=checkbox]):not([type=file]) { padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; }
+.row label { margin-bottom: 0; }
+.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; margin: 0; cursor: pointer; }
+h2.section { margin-top: 20px; display: flex; justify-content: space-between; align-items: baseline; }

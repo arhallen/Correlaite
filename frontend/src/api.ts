@@ -19,8 +19,13 @@ export async function api<T = unknown>(path: string, init: RequestInit & { json?
 
 export interface User { id: string; email: string; role: 'user' | 'admin' }
 export interface Dataset { id: string; filename: string; size_bytes: number; created_at: string }
+export interface MarketFile {
+  id: string; function: string; symbol: string; market: string | null; params: Record<string, string>;
+  filename: string; size_bytes: number; row_count: number | null; created_at: string; mine: boolean;
+}
+export interface MarketList { configured: boolean; items: MarketFile[] }
 export interface Run {
-  id: string; dataset_id: string | null; prompt: string; code: string | null;
+  id: string; dataset_id: string | null; dataset_ids: string[]; market_data_ids: string[]; prompt: string; code: string | null;
   status: 'running' | 'success' | 'error'; stdout: string | null; stderr: string | null;
   result: string | null; duration_ms: number | null; created_at: string;
   files: { id: string; filename: string; content_type: string; size_bytes: number }[];

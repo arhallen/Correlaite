@@ -34,6 +34,7 @@ jobs:
           az deployment group create -g "$RG" -f infra/main.bicep \
             -p environmentName=${{ inputs.environment }} \
                postgresAdminPassword='${{ secrets.POSTGRES_ADMIN_PASSWORD }}' \
+               alphaVantageApiKey='${{ secrets.ALPHAVANTAGE_API_KEY }}' \
                adminEmails='${{ vars.ADMIN_EMAILS }}' \
                apiImage="$IMAGE" \
                appUrl='${{ vars.APP_URL }}' \
