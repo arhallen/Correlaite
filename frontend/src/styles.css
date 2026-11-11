@@ -45,3 +45,6 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
 td.clip { max-width: 360px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 td.actions { white-space: nowrap; }
+
+.out-img { max-width: 100%; height: auto; border: 1px solid var(--border, #ddd); border-radius: 6px; margin: 8px 0; display: block; }
+.files { margin-top: 8px; }

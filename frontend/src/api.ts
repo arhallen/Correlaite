@@ -23,6 +23,7 @@ export interface Run {
   id: string; dataset_id: string | null; prompt: string; code: string | null;
   status: 'running' | 'success' | 'error'; stdout: string | null; stderr: string | null;
   result: string | null; duration_ms: number | null; created_at: string;
+  files: { id: string; filename: string; content_type: string; size_bytes: number }[];
 }
 export interface Stats {
   users: number; active_7d: number; new_7d: number; runs_24h: number; runs_total: number; runs_failed: number;

@@ -5,16 +5,46 @@ import { config } from '../config.js';
 import { requireUser } from '../auth.js';
 import { HttpError } from '../errors.js';
 import { generateCode } from '../ai.js';
-import { executeCode, listFiles, sandboxConfigured, uploadFile } from '../sandbox.js';
-import { getBlob } from '../storage.js';
+import { downloadFile, executeCode, listFiles, sandboxConfigured, uploadFile } from '../sandbox.js';
+import { getBlob, putBlob } from '../storage.js';
+import { safeFilename } from '../util.js';
 
 const body = z.object({ prompt: z.string().trim().min(1).max(4000), datasetId: z.string().uuid().optional() });
-const COLS = 'id, dataset_id, prompt, code, status, stdout, stderr, result, duration_ms, created_at';
+const MAX_OUTPUT_FILES = 20;
+const MAX_OUTPUT_BYTES = 25 * 1024 * 1024;
+const TYPES: Record<string, string> = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp',
+  csv: 'text/csv', tsv: 'text/tab-separated-values', json: 'application/json', txt: 'text/plain', html: 'text/html',
+  pdf: 'application/pdf', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', parquet: 'application/octet-stream',
+};
+const typeOf = (name: string) => TYPES[name.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream';
+const FILES = `coalesce((select json_agg(json_build_object('id', f.id, 'filename', f.filename, 'content_type', f.content_type, 'size_bytes', f.size_bytes) order by f.filename)
+  from run_files f where f.run_id = runs.id), '[]'::json) as files`;
+const COLS = `id, dataset_id, prompt, code, status, stdout, stderr, result, duration_ms, created_at, ${FILES}`;
 
 export default async function runRoutes(app: FastifyInstance) {
   app.get('/runs', { preHandler: requireUser }, async (req) => {
     const { rows } = await q(`select ${COLS} from runs where user_id = $1 order by created_at desc limit 50`, [req.user!.id]);
     return rows;
+  });
+
+  app.get('/runs/:id/files/:fileId', { preHandler: requireUser }, async (req, reply) => {
+    const { id, fileId } = z.object({ id: z.string().uuid(), fileId: z.string().uuid() }).parse(req.params);
+    const row = (
+      await q(
+        'select f.filename, f.content_type, f.blob_path from run_files f join runs r on r.id = f.run_id where f.id = $1 and r.id = $2 and r.user_id = $3',
+        [fileId, id, req.user!.id],
+      )
+    ).rows[0];
+    if (!row) throw new HttpError(404, 'Not found');
+    const inline = row.content_type.startsWith('image/') && row.content_type !== 'image/svg+xml';
+    return reply
+      .header('Content-Type', row.content_type)
+      .header('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${row.filename.replace(/"/g, '')}"`)
+      .header('X-Content-Type-Options', 'nosniff')
+      .header('Content-Security-Policy', "default-src 'none'; sandbox")
+      .header('Cache-Control', 'private, max-age=3600')
+      .send(await getBlob(row.blob_path));
   });
 
   app.post('/runs', { preHandler: requireUser, config: { rateLimit: { max: 20, timeWindow: '1 minute' } } }, async (req) => {
@@ -59,6 +89,28 @@ export default async function runRoutes(app: FastifyInstance) {
         }
       }
       const res = await executeCode(identifier, gen.code);
+
+      // Collect files the code produced (charts, CSVs, ...) so they are available on the website.
+      try {
+        const inputs = new Set(dataset ? [dataset.filename] : []);
+        let total = 0;
+        let count = 0;
+        for (const name of await listFiles(identifier)) {
+          const fname = safeFilename(name);
+          if (!name || inputs.has(name) || count >= MAX_OUTPUT_FILES) continue;
+          const data = await downloadFile(identifier, name);
+          total += data.length;
+          if (total > MAX_OUTPUT_BYTES) break;
+          const blobPath = `${user.id}/runs/${run.id}/${fname}`;
+          await putBlob(blobPath, data);
+          await q('insert into run_files(run_id, filename, content_type, size_bytes, blob_path) values ($1,$2,$3,$4,$5)', [
+            run.id, fname, typeOf(fname), data.length, blobPath,
+          ]);
+          count++;
+        }
+      } catch (e) {
+        req.log.warn(e, 'collecting output files failed');
+      }
       await q('update runs set status=$2, stdout=$3, stderr=$4, result=$5, duration_ms=$6 where id = $1', [
         run.id,
         res.status,

@@ -33,6 +33,17 @@ export async function listFiles(identifier: string): Promise<string[]> {
   return (json.value ?? []).map((f: any) => String(f.properties?.filename ?? f.name ?? ''));
 }
 
+export async function downloadFile(identifier: string, filename: string): Promise<Buffer> {
+  const headers = await auth();
+  const enc = encodeURIComponent(filename);
+  // The path differs between preview API versions; try the 2024-02-02-preview form first.
+  for (const path of [`files/content/${enc}`, `files/${enc}/content`]) {
+    const res = await fetch(url(path, identifier), { headers });
+    if (res.ok) return Buffer.from(await res.arrayBuffer());
+  }
+  throw new HttpError(502, `Sandbox download failed for ${filename}`);
+}
+
 export interface ExecResult {
   status: 'success' | 'error';
   stdout: string;

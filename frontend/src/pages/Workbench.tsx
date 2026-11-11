@@ -96,6 +96,23 @@ export default function Workbench() {
             {r.code && <details><summary>Generated code</summary><pre>{r.code}</pre></details>}
             {r.stdout && <pre className="out">{r.stdout}</pre>}
             {r.result && r.result !== r.stdout && <pre className="out">{r.result}</pre>}
+            {(r.files?.length ?? 0) > 0 && (
+              <div className="files">
+                {r.files.filter((f) => f.content_type.startsWith('image/') && f.content_type !== 'image/svg+xml').map((f) => (
+                  <a key={f.id} href={`/api/runs/${r.id}/files/${f.id}`} target="_blank" rel="noreferrer">
+                    <img src={`/api/runs/${r.id}/files/${f.id}`} alt={f.filename} className="out-img" />
+                  </a>
+                ))}
+                <ul className="list">
+                  {r.files.map((f) => (
+                    <li key={f.id}>
+                      <a href={`/api/runs/${r.id}/files/${f.id}`} download={f.filename}>{f.filename}</a>{' '}
+                      <span className="muted">{fmtSize(f.size_bytes)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {r.stderr && <pre className="out err">{r.stderr}</pre>}
           </article>
         ))}
