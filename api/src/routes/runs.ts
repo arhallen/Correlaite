@@ -5,7 +5,7 @@ import { config } from '../config.js';
 import { requireUser } from '../auth.js';
 import { HttpError } from '../errors.js';
 import { generateCode } from '../ai.js';
-import { executeCode, sandboxConfigured, uploadFile } from '../sandbox.js';
+import { executeCode, listFiles, sandboxConfigured, uploadFile } from '../sandbox.js';
 import { getBlob } from '../storage.js';
 
 const body = z.object({ prompt: z.string().trim().min(1).max(4000), datasetId: z.string().uuid().optional() });
@@ -50,7 +50,14 @@ export default async function runRoutes(app: FastifyInstance) {
       await q('update runs set code = $2 where id = $1', [run.id, gen.code]);
 
       const identifier = `run-${run.id}`; // fresh sandbox session per run
-      if (dataset) await uploadFile(identifier, dataset.filename, await getBlob(dataset.blob_path));
+      if (dataset) {
+        await uploadFile(identifier, dataset.filename, await getBlob(dataset.blob_path));
+        const files = await listFiles(identifier).catch((e) => { req.log.warn(e, 'sandbox file listing failed'); return null; });
+        req.log.info({ identifier, dataset: dataset.filename, files }, 'dataset uploaded to sandbox');
+        if (files && !files.some((f) => f.endsWith(dataset!.filename))) {
+          throw new HttpError(502, `Dataset ${dataset.filename} did not arrive in the sandbox`);
+        }
+      }
       const res = await executeCode(identifier, gen.code);
       await q('update runs set status=$2, stdout=$3, stderr=$4, result=$5, duration_ms=$6 where id = $1', [
         run.id,

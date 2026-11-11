@@ -77,6 +77,9 @@ export default function Workbench() {
             onChange={(e) => setPrompt(e.target.value)}
             placeholder={selected ? 'e.g. Summarise this dataset and plot the distribution of each numeric column' : 'Select a dataset, or just ask for some analysis…'}
           />
+          <p className="muted">
+            {selected ? `Dataset: ${datasets.find((d) => d.id === selected)?.filename ?? ''}` : datasets.length ? 'No dataset selected — click one in the list to attach it.' : 'No dataset attached.'}
+          </p>
           <div className="row">
             <button disabled={busy || !prompt.trim()} onClick={run}>{busy ? 'Running…' : 'Generate & run'}</button>
             <span className="muted">Code runs in an isolated sandbox with no internet access.</span>

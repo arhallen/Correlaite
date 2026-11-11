@@ -8,7 +8,8 @@ const cred = new DefaultAzureCredential();
 const SYSTEM = `You write Python 3 code that runs in an isolated sandbox WITHOUT internet access.
 Rules:
 - Output ONLY one fenced python code block, no explanation.
-- The user's dataset (if any) is in /mnt/data/<filename>. Inspect it before using it (columns, dtypes).
+- If the task names a dataset file, use exactly that path (it is in /mnt/data/). Inspect it before using it (columns, dtypes). Supported formats: csv, tsv, json, xlsx, parquet, txt - choose the reader from the file extension.
+- If the task says no dataset is attached, do not search the filesystem for data: either generate sample data if the task allows, or print a short message saying no dataset is attached.
 - pandas, numpy, matplotlib are available. Do not pip install anything. Do not make network calls.
 - Print the results you want the user to see. For charts, save PNG files to /mnt/data/ and print their filenames.`;
 
@@ -25,7 +26,7 @@ export async function generateCode(prompt: string, dataset: { filename: string }
   if (config.AZURE_OPENAI_API_KEY) headers['api-key'] = config.AZURE_OPENAI_API_KEY;
   else headers.Authorization = `Bearer ${(await cred.getToken('https://cognitiveservices.azure.com/.default')).token}`;
 
-  const user = dataset ? `Dataset file: /mnt/data/${dataset.filename}\n\nTask: ${prompt}` : `Task: ${prompt}`;
+  const user = dataset ? `Dataset file: /mnt/data/${dataset.filename}\n\nTask: ${prompt}` : `No dataset is attached.\n\nTask: ${prompt}`;
   const res = await fetch(
     `${endpoint.replace(/\/$/, '')}/openai/deployments/${deployment}/chat/completions?api-version=${config.AZURE_OPENAI_API_VERSION}`,
     {

@@ -25,6 +25,14 @@ export async function uploadFile(identifier: string, filename: string, data: Buf
   if (!res.ok) throw new HttpError(502, `Sandbox upload failed (${res.status})`);
 }
 
+// Lists files in the session's /mnt/data (used to verify an upload actually landed).
+export async function listFiles(identifier: string): Promise<string[]> {
+  const res = await fetch(url('files', identifier), { headers: await auth() });
+  if (!res.ok) throw new HttpError(502, `Sandbox file listing failed (${res.status})`);
+  const json: any = await res.json();
+  return (json.value ?? []).map((f: any) => String(f.properties?.filename ?? f.name ?? ''));
+}
+
 export interface ExecResult {
   status: 'success' | 'error';
   stdout: string;
