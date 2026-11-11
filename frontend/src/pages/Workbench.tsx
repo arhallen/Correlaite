@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Dataset, type MarketFile, type MarketList, type Run } from '../api';
-import { describe, fmtDate, fmtSize } from './MarketData';
+import { fmtSize, fullName } from './MarketData';
 import FileViewer from './FileViewer';
 
 export default function Workbench() {
@@ -85,9 +85,9 @@ export default function Workbench() {
             <li key={f.id} className={selectedMarket.includes(f.id) ? 'sel' : ''}>
               <label className="check">
                 <input type="checkbox" checked={selectedMarket.includes(f.id)} onChange={() => toggle(setSelectedMarket, f.id)} />
-                <span>{f.function}<br /><span className="muted small">{describe(f)} · {fmtDate(f.created_at)}</span></span>
+                <span>{fullName(f)}</span>
               </label>
-              <button className="link" onClick={() => setViewing({ base: `/market-data/${f.id}`, title: `${f.function} ${describe(f)}` })}>View</button>
+              <button className="link" onClick={() => setViewing({ base: `/market-data/${f.id}`, title: fullName(f) })}>View</button>
             </li>
           ))}
           {market.length === 0 && <li className="muted">Nothing downloaded yet.</li>}
@@ -105,7 +105,7 @@ export default function Workbench() {
           />
           <p className="muted">
             {count
-              ? `Attached: ${[...datasets.filter((d) => selected.includes(d.id)).map((d) => d.filename), ...market.filter((f) => selectedMarket.includes(f.id)).map((f) => `${f.function} ${describe(f)}`)].join(', ')}`
+              ? `Attached: ${[...datasets.filter((d) => selected.includes(d.id)).map((d) => d.filename), ...market.filter((f) => selectedMarket.includes(f.id)).map((f) => fullName(f))].join(', ')}`
               : datasets.length || market.length ? 'No files selected — tick one or more in the lists to attach them.' : 'No dataset attached.'}
           </p>
           <div className="row">

@@ -38,9 +38,12 @@ export function buildUrl(r: AvRequest, apiKey: string): string {
   return u.toString();
 }
 
+/** Short label shown to users instead of the Alpha Vantage function name. */
+export const kindOf = (fn: string): 'STOCK' | 'CRYPTO' => (fn === 'DIGITAL_CURRENCY_DAILY' ? 'CRYPTO' : 'STOCK');
+
 export function makeFilename(r: AvRequest, at: Date): string {
   const stamp = at.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-  const parts = [r.function, r.symbol, 'market' in r ? r.market : null, stamp].filter(Boolean);
+  const parts = [r.symbol, 'market' in r ? r.market : null, stamp, kindOf(r.function)].filter(Boolean);
   return `${parts.join('_')}.json`;
 }
 

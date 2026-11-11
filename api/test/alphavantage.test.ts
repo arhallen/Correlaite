@@ -23,9 +23,9 @@ test('api key is only in the upstream url, never in public params or filename', 
   assert.deepEqual(publicParams(r), {});
   assert.ok(!makeFilename(r, new Date()).includes('SECRET'));
 });
-test('filename carries function, symbol, market and UTC timestamp', () => {
+test('filename is symbol, market, UTC timestamp, then STOCK or CRYPTO', () => {
   const r = requestSchema.parse({ function: 'DIGITAL_CURRENCY_DAILY', symbol: 'BTC', market: 'USD' });
-  assert.equal(makeFilename(r, new Date('2026-11-11T15:30:05.123Z')), 'DIGITAL_CURRENCY_DAILY_BTC_USD_20261111T153005Z.json');
+  assert.equal(makeFilename(r, new Date('2026-11-11T15:30:05.123Z')), 'BTC_USD_20261111T153005Z_CRYPTO.json');
 });
 test('classifyBody spots errors, rate limits and good data', () => {
   assert.equal(classifyBody({ 'Error Message': 'bad' }).ok, false);
