@@ -177,6 +177,23 @@ resource acs 'Microsoft.Communication/communicationServices@2023-04-01' = {
   }
 }
 
+// Diagnostic setting that feeds the Email insights workbook on the Communication Services resource.
+// Same Log Analytics workspace as Application Insights. Tables: ACSEmailSendMailOperational,
+// ACSEmailStatusUpdateOperational, ACSEmailUserEngagementOperational.
+resource acsDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  name: '${base}-acs-email-logs'
+  scope: acs
+  properties: {
+    workspaceId: law.id
+    logAnalyticsDestinationType: 'Dedicated'
+    logs: [
+      { category: 'EmailSendMailOperational', enabled: true } // Email Service Send Mail logs
+      { category: 'EmailStatusUpdateOperational', enabled: true } // Email Service Delivery Status Update Logs
+      { category: 'EmailUserEngagementOperational', enabled: true } // Email Service User Engagement Logs
+    ]
+  }
+}
+
 // ---------- Code sandbox: no internet access ----------
 resource sessionPool 'Microsoft.App/sessionPools@2024-02-02-preview' = {
   name: '${base}-sandbox'
@@ -359,6 +376,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'AZURE_OPENAI_DEPLOYMENT', value: createOpenAi ? openAiDeployment.name : azureOpenAiDeployment }
             { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
+            { name: 'OTEL_SERVICE_NAME', value: 'correlaite-api' } // cloud role name in Application Insights
           ], empty(alphaVantageApiKey) ? [] : [
             { name: 'ALPHAVANTAGE_API_KEY', secretRef: 'alphavantage-key' }
           ])
@@ -393,4 +411,6 @@ output acrLoginServer string = acr.properties.loginServer
 output apiAppName string = api.name
 output swaName string = swa.name
 output siteUrl string = publicUrl
+// Not a secret: it is embedded in the browser bundle so page views reach Application Insights.
+output appInsightsConnectionString string = appInsights.properties.ConnectionString
 output openAiEndpoint string = createOpenAi ? openAi.properties.endpoint : azureOpenAiEndpoint
