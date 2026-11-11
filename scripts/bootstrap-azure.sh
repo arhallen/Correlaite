@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # One-time setup per environment: resource group + a GitHub OIDC identity (no stored secrets).
 # Usage: ./scripts/bootstrap-azure.sh <github-owner/repo> <staging|production> [location]
+# If your GitHub org/repo uses immutable (ID-based) OIDC subjects, set SUBJECT_REPO first, e.g.
+#   SUBJECT_REPO="arhallen@80946464/Correlaite@1453848075" ./scripts/bootstrap-azure.sh ...
+# (the failed azure/login error message shows the exact subject GitHub presents).
 set -euo pipefail
 
 REPO="${1:?usage: $0 <github-owner/repo> <staging|production> [location]}"
@@ -8,6 +11,7 @@ ENV_NAME="${2:?environment}"
 LOCATION="${3:-westeurope}"
 RG="rg-correlaite-${ENV_NAME}"
 APP_NAME="correlaite-github-${ENV_NAME}"
+SUBJECT_REPO="${SUBJECT_REPO:-$REPO}"
 
 SUB_ID=$(az account show --query id -o tsv)
 TENANT_ID=$(az account show --query tenantId -o tsv)
@@ -24,7 +28,7 @@ az ad sp create --id "$APP_ID" >/dev/null
 az ad app federated-credential create --id "$APP_ID" --parameters "{
   \"name\": \"github-${ENV_NAME}\",
   \"issuer\": \"https://token.actions.githubusercontent.com\",
-  \"subject\": \"repo:${REPO}:environment:${ENV_NAME}\",
+  \"subject\": \"repo:${SUBJECT_REPO}:environment:${ENV_NAME}\",
   \"audiences\": [\"api://AzureADTokenExchange\"]
 }" >/dev/null
 
