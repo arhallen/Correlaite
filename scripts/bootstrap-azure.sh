@@ -2,7 +2,7 @@
 # One-time setup per environment: resource group + a GitHub OIDC identity (no stored secrets).
 # Usage: ./scripts/bootstrap-azure.sh <github-owner/repo> <staging|production> [location]
 # If your GitHub org/repo uses immutable (ID-based) OIDC subjects, set SUBJECT_REPO first, e.g.
-#   SUBJECT_REPO="arhallen@80946464/Correlaite@1453848075" ./scripts/bootstrap-azure.sh ...
+#   SUBJECT_REPO="<owner>@<owner-id>/<repo>@<repo-id>" ./scripts/bootstrap-azure.sh ...
 # (the failed azure/login error message shows the exact subject GitHub presents).
 set -euo pipefail
 
