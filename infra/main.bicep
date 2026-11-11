@@ -27,7 +27,18 @@ param apiImage string = 'mcr.microsoft.com/k8se/quickstart:latest'
 @description('Public URL of the site if you use a custom domain; defaults to the Static Web App hostname')
 param appUrl string = ''
 
-@description('Optional: existing Azure OpenAI endpoint + deployment name used for code generation')
+@description('Create an Azure OpenAI account + model deployment for code generation. Set false to use an existing endpoint via azureOpenAiEndpoint/azureOpenAiDeployment')
+param createOpenAi bool = true
+param openAiLocation string = 'swedencentral'
+@description('Model to deploy. Availability and default quota differ per region/subscription; if the deploy fails with a quota or model error, try another model/version or capacity')
+param openAiModelName string = 'gpt-4.1'
+param openAiModelVersion string = '2025-04-14'
+param openAiSkuName string = 'GlobalStandard'
+@description('Capacity in thousands of tokens per minute')
+param openAiCapacity int = 50
+param openAiDeploymentName string = 'codegen'
+
+@description('Only used when createOpenAi is false')
 param azureOpenAiEndpoint string = ''
 param azureOpenAiDeployment string = ''
 
@@ -40,6 +51,7 @@ var isProd = environmentName == 'production'
 var roleAcrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
 var roleBlobDataContributor = 'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
 var roleSessionExecutor = '0fb8eba5-a2bb-4abe-b1c1-49dfad359bb0' // Azure ContainerApps Session Executor
+var roleOpenAiUser = '5e0bd9bd-7b93-4f28-af87-19fc36ad61bd' // Cognitive Services OpenAI User
 
 // ---------- Observability ----------
 resource law 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
@@ -180,6 +192,45 @@ resource sessionPool 'Microsoft.App/sessionPools@2024-02-02-preview' = {
   }
 }
 
+// ---------- AI model (Azure OpenAI), accessed by the API through its managed identity ----------
+resource openAi 'Microsoft.CognitiveServices/accounts@2024-10-01' = if (createOpenAi) {
+  name: take('${base}-oai-${take(suffix, 6)}', 64)
+  location: openAiLocation
+  kind: 'OpenAI'
+  sku: { name: 'S0' }
+  properties: {
+    customSubDomainName: take('${base}-oai-${take(suffix, 6)}', 64)
+    publicNetworkAccess: 'Enabled'
+    disableLocalAuth: true
+  }
+}
+
+resource openAiDeployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = if (createOpenAi) {
+  parent: openAi
+  name: openAiDeploymentName
+  sku: {
+    name: openAiSkuName
+    capacity: openAiCapacity
+  }
+  properties: {
+    model: {
+      format: 'OpenAI'
+      name: openAiModelName
+      version: openAiModelVersion
+    }
+  }
+}
+
+resource rbacOpenAi 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (createOpenAi) {
+  name: guid(openAi.id, identity.id, roleOpenAiUser)
+  scope: openAi
+  properties: {
+    principalId: identity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roleOpenAiUser)
+  }
+}
+
 // ---------- Static Web App (frontend) ----------
 resource swa 'Microsoft.Web/staticSites@2023-12-01' = {
   name: '${base}-web'
@@ -245,7 +296,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identity.id}': {} }
   }
-  dependsOn: [rbacAcrPull]
+  dependsOn: [rbacAcrPull, rbacOpenAi, openAiDeployment]
   properties: {
     managedEnvironmentId: cae.id
     configuration: {
@@ -292,8 +343,8 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'STORAGE_ACCOUNT_URL', value: storage.properties.primaryEndpoints.blob }
             { name: 'STORAGE_CONTAINER', value: 'datasets' }
             { name: 'SANDBOX_POOL_ENDPOINT', value: sessionPool.properties.poolManagementEndpoint }
-            { name: 'AZURE_OPENAI_ENDPOINT', value: azureOpenAiEndpoint }
-            { name: 'AZURE_OPENAI_DEPLOYMENT', value: azureOpenAiDeployment }
+            { name: 'AZURE_OPENAI_ENDPOINT', value: createOpenAi ? openAi.properties.endpoint : azureOpenAiEndpoint }
+            { name: 'AZURE_OPENAI_DEPLOYMENT', value: createOpenAi ? openAiDeployment.name : azureOpenAiDeployment }
             { name: 'AZURE_CLIENT_ID', value: identity.properties.clientId }
             { name: 'APPLICATIONINSIGHTS_CONNECTION_STRING', value: appInsights.properties.ConnectionString }
           ]
@@ -328,3 +379,4 @@ output acrLoginServer string = acr.properties.loginServer
 output apiAppName string = api.name
 output swaName string = swa.name
 output siteUrl string = publicUrl
+output openAiEndpoint string = createOpenAi ? openAi.properties.endpoint : azureOpenAiEndpoint
