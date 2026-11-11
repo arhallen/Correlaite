@@ -12,6 +12,9 @@ param location string = resourceGroup().location
 @description('Static Web Apps (Standard, needed for the linked API backend) is only available in some regions')
 param swaLocation string = 'westeurope'
 
+@description('Postgres Flexible Server is restricted in some regions for some subscriptions (error: allowed Version list is empty). Pick one where it is offered.')
+param postgresLocation string = 'northeurope'
+
 @secure()
 param postgresAdminPassword string
 
@@ -98,7 +101,7 @@ resource datasetsContainer 'Microsoft.Storage/storageAccounts/blobServices/conta
 // ---------- Database ----------
 resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2023-06-01-preview' = {
   name: '${base}-pg-${take(suffix, 6)}'
-  location: location
+  location: postgresLocation
   sku: {
     name: 'Standard_B1ms'
     tier: 'Burstable'
@@ -170,10 +173,8 @@ resource sessionPool 'Microsoft.App/sessionPools@2024-02-02-preview' = {
       readySessionInstances: 0
     }
     dynamicPoolConfiguration: {
-      lifecycleConfiguration: {
-        lifecycleType: 'Timed'
-        coolDownPeriodInSeconds: 300
-      }
+      executionType: 'Timed'
+      cooldownPeriodInSeconds: 300
     }
     sessionNetworkConfiguration: { status: 'EgressDisabled' }
   }
