@@ -1,3 +1,4 @@
+import './instrument.js';
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
@@ -13,15 +14,6 @@ import datasetRoutes from './routes/datasets.js';
 import marketDataRoutes from './routes/marketData.js';
 import runRoutes from './routes/runs.js';
 import adminRoutes from './routes/admin.js';
-
-if (process.env.APPLICATIONINSIGHTS_CONNECTION_STRING) {
-  try {
-    const { useAzureMonitor } = await import('@azure/monitor-opentelemetry');
-    useAzureMonitor();
-  } catch (e) {
-    console.warn('Application Insights not started', e);
-  }
-}
 
 const app = Fastify({ logger: true, trustProxy: true });
 

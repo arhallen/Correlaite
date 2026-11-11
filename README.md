@@ -29,6 +29,12 @@ Emails listed in `ADMIN_EMAILS` become admins on first sign-in. Set `ALLOW_SIGNU
 
 Sandbox safety: `/api/runs` returns 503 unless a sandbox pool is configured; generated code is never run in the API container.
 
+## Monitoring
+
+- **API requests/dependencies/exceptions:** Application Insights via OpenTelemetry (`api/src/instrument.ts`, role `correlaite-api`). Container console logs, including one line per request, are also in Log Analytics (`ContainerAppConsoleLogs_CL`).
+- **Page visits:** the browser SDK (`frontend/src/telemetry.ts`, role `correlaite-web`) records page views, route changes and `/api` calls. The connection string is passed at build time as `VITE_APPINSIGHTS_CONNECTION_STRING` from the Bicep output.
+- **Email (Communication Services):** a diagnostic setting sends Send Mail, Delivery Status Update and User Engagement logs to the Log Analytics workspace, which powers the Insights view on the resource.
+
 ## Market data (Alpha Vantage)
 
 Signed-in users can download daily stock (`TIME_SERIES_DAILY`) and crypto (`DIGITAL_CURRENCY_DAILY`) series on the *Market data* page.
