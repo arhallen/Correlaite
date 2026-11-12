@@ -33,7 +33,7 @@ export default async function marketDataRoutes(app: FastifyInstance) {
     if (used >= config.ALPHAVANTAGE_DAILY_DOWNLOAD_LIMIT) throw new HttpError(429, 'Daily download limit reached');
 
     const label = `${r.symbol}${'market' in r ? ' / ' + r.market : ''}`;
-    const paid = await spendCredits(user.id, PRICING.downloadCost, 'download', `Downloaded ${label}`, { function: r.function });
+    const paid = await spendCredits(user.id, PRICING.downloadCost, 'download', `Downloaded ${label}`, { meta: { function: r.function } });
     if (!paid) throw new HttpError(402, `You need ${PRICING.downloadCost} credits to download a new file`);
     const id = crypto.randomUUID();
     try {
