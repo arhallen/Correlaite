@@ -53,7 +53,7 @@ export function classifyBody(body: any): { ok: true; rows: number } | { ok: fals
   if (typeof body['Error Message'] === 'string') return { ok: false, message: 'The data provider did not recognise this symbol or request' };
   const note = body.Note ?? body.Information;
   if (typeof note === 'string') {
-    return { ok: false, message: /premium/i.test(note) ? 'This request needs a premium data plan' : 'The data provider's rate limit was reached, try again later' };
+    return { ok: false, message: /premium/i.test(note) ? 'This request needs a premium data plan' : 'The data provider rate limit was reached, try again later' };
   }
   const series = Object.entries(body).find(([k, v]) => k.startsWith('Time Series') && v && typeof v === 'object');
   if (!series) return { ok: false, message: 'The data provider returned no time series' };
