@@ -8,6 +8,8 @@ import { generateCode } from '../ai.js';
 import { downloadFile, executeCode, listFiles, sandboxConfigured, uploadFile } from '../sandbox.js';
 import { getBlob, putBlob } from '../storage.js';
 import { safeFilename } from '../util.js';
+import { getBalance, spendCredits } from '../credits.js';
+import { PRICING, runCost } from '../pricing.js';
 
 const body = z.object({
   prompt: z.string().trim().min(1).max(4000),
@@ -25,7 +27,7 @@ const TYPES: Record<string, string> = {
 const typeOf = (name: string) => TYPES[name.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream';
 const FILES = `coalesce((select json_agg(json_build_object('id', f.id, 'filename', f.filename, 'content_type', f.content_type, 'size_bytes', f.size_bytes) order by f.filename)
   from run_files f where f.run_id = runs.id), '[]'::json) as files`;
-const COLS = `id, dataset_id, dataset_ids, market_data_ids, prompt, code, status, stdout, stderr, result, duration_ms, created_at, ${FILES}`;
+const COLS = `id, dataset_id, dataset_ids, market_data_ids, prompt, code, status, stdout, stderr, result, duration_ms, credits_charged, created_at, ${FILES}`;
 
 export default async function runRoutes(app: FastifyInstance) {
   app.get('/runs', { preHandler: requireUser }, async (req) => {
@@ -58,6 +60,10 @@ export default async function runRoutes(app: FastifyInstance) {
 
     // Fail closed: generated code is never executed anywhere except the network-isolated sandbox.
     if (!sandboxConfigured()) throw new HttpError(503, 'Code sandbox is not configured');
+
+    if ((await getBalance(user.id)) < PRICING.minToRun) {
+      throw new HttpError(402, `You need at least ${PRICING.minToRun} credits to run code`);
+    }
 
     const used = (
       await q("select count(*)::int n from runs where user_id = $1 and created_at > now() - interval '24 hours'", [user.id])
@@ -98,6 +104,7 @@ export default async function runRoutes(app: FastifyInstance) {
     ).rows[0];
 
     let tokens = 0;
+    let executedMs: number | null = null; // set once the sandbox actually ran code; failures before that are free
     try {
       const gen = await generateCode(b.prompt, inputFiles);
       tokens = gen.tokens;
@@ -114,6 +121,7 @@ export default async function runRoutes(app: FastifyInstance) {
         if (missing.length) throw new HttpError(502, `File ${missing[0].filename} did not arrive in the sandbox`);
       }
       const res = await executeCode(identifier, gen.code);
+      executedMs = res.durationMs;
 
       // Collect files the code produced (charts, CSVs, ...) so they are available on the website.
       try {
@@ -148,6 +156,17 @@ export default async function runRoutes(app: FastifyInstance) {
       req.log.error(e, 'run failed');
       const msg = e instanceof HttpError ? e.message : 'Internal error';
       await q("update runs set status='error', stderr=$2 where id = $1", [run.id, `Run failed: ${msg}`]);
+    }
+
+    if (executedMs !== null) {
+      // 10 credits + 5 per started second. Capped at what is left, so a balance never goes negative.
+      const cost = runCost(executedMs);
+      const seconds = Math.ceil(executedMs / 1000);
+      const spent = await spendCredits(user.id, cost, 'run', `Code run (${seconds}s)`, { partial: true, meta: { runId: run.id, seconds, cost } }).catch((e) => {
+        req.log.error(e, 'charging credits failed');
+        return null;
+      });
+      await q('update runs set credits_charged = $2 where id = $1', [run.id, spent?.charged ?? 0]);
     }
 
     await q("insert into usage_events(user_id, kind, quantity) values ($1,'run',1), ($1,'tokens',$2)", [user.id, tokens]);

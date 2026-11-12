@@ -1,6 +1,8 @@
-import { Link, Navigate, Route, Routes } from 'react-router-dom';
+import { Link, NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import type { ReactElement } from 'react';
 import { useAuth } from './auth';
+import { useCredits } from './credits';
+import Credits from './pages/Credits';
 import Login from './pages/Login';
 import Verify from './pages/Verify';
 import Workbench from './pages/Workbench';
@@ -28,16 +30,24 @@ function Home() {
 
 export default function App() {
   const { user, logout } = useAuth();
+  const { balance } = useCredits();
   return (
     <>
       <header className="bar">
         <Link to="/" className="brand"><img src="/logo.svg" alt="" width="26" height="26" />Correlaite</Link>
         <nav>
           {!user && <Link to="/login">Sign in</Link>}
-          {user && <Link to="/market-data">Market data</Link>}
-          {user?.role === 'admin' && <Link to="/admin">Admin</Link>}
           {user && (
             <>
+              <NavLink to="/market-data">Market data</NavLink>
+              <NavLink to="/benchmark">Benchmark</NavLink>
+              <NavLink to="/credits">Credit management</NavLink>
+            </>
+          )}
+          {user?.role === 'admin' && <NavLink to="/admin">Admin</NavLink>}
+          {user && (
+            <>
+              {balance !== null && <Link to="/credits" className="chip" title="Your credit balance">{balance} credits</Link>}
               <span className="muted">{user.email}</span>
               <button className="link" onClick={logout}>Sign out</button>
             </>
@@ -49,6 +59,8 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/auth/verify" element={<Verify />} />
           <Route path="/" element={<Home />} />
+          <Route path="/benchmark" element={<Protected><Workbench /></Protected>} />
+          <Route path="/credits" element={<Protected><Credits /></Protected>} />
           <Route path="/market-data" element={<Protected><MarketData /></Protected>} />
           <Route path="/admin" element={<Protected admin><Admin /></Protected>} />
           <Route path="*" element={<Navigate to="/" replace />} />

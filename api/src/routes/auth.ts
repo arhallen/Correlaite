@@ -6,6 +6,12 @@ import { COOKIE, SESSION_DAYS, requireUser } from '../auth.js';
 import { sendMagicLink } from '../email.js';
 import { HttpError } from '../errors.js';
 import { newToken, sha256 } from '../util.js';
+import { PRICING } from '../pricing.js';
+
+// New users start with the column default (see migration 004); this only adds the ledger entry for it.
+async function grantWelcome(userId: string) {
+  await q("insert into credit_transactions(user_id, amount, balance_after, kind, description) values ($1, $2, (select credits from users where id = $1), 'signup_bonus', 'Welcome credits')", [userId, PRICING.initialCredits]);
+}
 
 const requestBody = z.object({ email: z.string().trim().toLowerCase().email().max(254) });
 const verifyBody = z.object({ token: z.string().min(20).max(200) });
@@ -47,11 +53,12 @@ export default async function authRoutes(app: FastifyInstance) {
         `insert into users(email, role, last_login_at) values ($1, $2, now())
          on conflict (email) do update
            set last_login_at = now(), role = case when $3 then 'admin' else users.role end
-         returning id, email, role, disabled`,
+         returning id, email, role, disabled, (xmax = 0) as created`,
         [email, isAdmin ? 'admin' : 'user', isAdmin],
       )
     ).rows[0];
     if (user.disabled) throw new HttpError(403, 'This account is disabled');
+    if (user.created) await grantWelcome(user.id);
 
     const sid = newToken();
     await q("insert into sessions(user_id, token_hash, expires_at, user_agent) values ($1, $2, now() + ($3::text || ' days')::interval, $4)", [

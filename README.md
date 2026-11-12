@@ -35,12 +35,18 @@ Sandbox safety: `/api/runs` returns 503 unless a sandbox pool is configured; gen
 - **Page visits:** the browser SDK (`frontend/src/telemetry.ts`, role `correlaite-web`) records page views, route changes and `/api` calls. The connection string is passed at build time as `VITE_APPINSIGHTS_CONNECTION_STRING` from the Bicep output.
 - **Email (Communication Services):** a diagnostic setting sends Send Mail, Delivery Status Update and User Engagement logs to the Log Analytics workspace, which powers the Insights view on the resource.
 
-## Market data (Alpha Vantage)
+## Market data
 
-Signed-in users can download daily stock (`TIME_SERIES_DAILY`) and crypto (`DIGITAL_CURRENCY_DAILY`) series on the *Market data* page.
-Downloads are stored as JSON in Blob Storage and listed in a shared catalog (function, symbol, market, other parameters, download time).
-The API key lives only on the server (`ALPHAVANTAGE_API_KEY`, from the GitHub secret of the same name) and is never stored in the catalog or returned to the browser.
-Users pick catalog files and/or their own private uploads (multi-select) in the workbench. Downloads are limited per user (`ALPHAVANTAGE_DAILY_DOWNLOAD_LIMIT`, default 10/day).
+Signed-in users can download daily stock and crypto series on the *Market data* page. Downloads are stored as JSON in Blob Storage and listed in a shared catalog
+(symbol, market, download time, STOCK or CRYPTO). Provider adapter: `api/src/alphavantage.ts`; its key (`ALPHAVANTAGE_API_KEY`, from the GitHub secret of the same name)
+lives only on the server and never reaches the browser. More providers can be added next to it. Downloads are limited per user (`ALPHAVANTAGE_DAILY_DOWNLOAD_LIMIT`, default 10/day).
+In the *Benchmark* page, users pick catalog files and/or their own private uploads (multi-select) and can filter by symbol/type and sort (latest first).
+
+## Credits
+
+Every account starts with 100 credits (`api/src/pricing.ts` holds all prices). Using existing files is free; downloading a new file costs 5; a sandbox run costs 10 plus 5 per started
+second (a run needs at least 15 credits to start, and charging never takes the balance below zero). Every change is recorded in `credit_transactions`. The *Credit management* page shows
+the balance and history. Buying is **mocked** (`POST /api/credits/purchase` grants credits without charging); replace `mockPayment` in `api/src/routes/credits.ts` with a real payment provider before launch.
 
 ## Development without installing anything locally
 

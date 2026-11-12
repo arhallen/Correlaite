@@ -11,6 +11,7 @@ import { migrate } from './migrate.js';
 import { HttpError } from './errors.js';
 import authRoutes from './routes/auth.js';
 import datasetRoutes from './routes/datasets.js';
+import creditRoutes from './routes/credits.js';
 import marketDataRoutes from './routes/marketData.js';
 import runRoutes from './routes/runs.js';
 import adminRoutes from './routes/admin.js';
@@ -47,6 +48,7 @@ await app.register(
     });
     await api.register(authRoutes);
     await api.register(datasetRoutes);
+    await api.register(creditRoutes);
     await api.register(marketDataRoutes);
     await api.register(runRoutes);
     await api.register(adminRoutes);

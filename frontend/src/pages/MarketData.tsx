@@ -2,20 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type MarketFile, type MarketList } from '../api';
 import FileViewer from './FileViewer';
-
-export const fmtSize = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
-export const fmtDate = (s: string) => new Date(s).toLocaleString();
-/** Non-secret request parameters as shown to users, e.g. "BTC / USD". */
-export const kindLabel = (f: MarketFile) => (f.function === 'DIGITAL_CURRENCY_DAILY' ? 'CRYPTO' : 'STOCK');
-/** Symbol first, then market and other parameters, e.g. "BTC / USD". */
-export const describe = (f: MarketFile) =>
-  [f.symbol, f.market, ...Object.entries(f.params).map(([k, v]) => `${k}=${v}`)].filter(Boolean).join(' / ');
-/** Full display name: symbol / market · downloaded date and time · STOCK or CRYPTO. */
-export const fullName = (f: MarketFile) => `${describe(f)} · ${fmtDate(f.created_at)} · ${kindLabel(f)}`;
+import { CreditWarning, useCredits } from '../credits';
+import { fmtDate, fmtSize, fullName, kindLabel } from '../format';
+import { useMarketFilter } from '../marketFilter';
 
 const FUNCTIONS = [
-  { value: 'TIME_SERIES_DAILY', label: 'Stock daily (TIME_SERIES_DAILY)', market: false },
-  { value: 'DIGITAL_CURRENCY_DAILY', label: 'Crypto daily (DIGITAL_CURRENCY_DAILY)', market: true },
+  { value: 'TIME_SERIES_DAILY', label: 'Stock (daily)', market: false },
+  { value: 'DIGITAL_CURRENCY_DAILY', label: 'Crypto (daily)', market: true },
 ];
 
 export default function MarketData() {
@@ -27,6 +20,9 @@ export default function MarketData() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [viewing, setViewing] = useState<MarketFile | null>(null);
+  const { balance, pricing, refresh } = useCredits();
+  const { shown, controls, filtered } = useMarketFilter(data.items);
+  const cost = pricing?.downloadCost ?? 5;
 
   const load = useCallback(async () => setData(await api<MarketList>('/market-data')), []);
   useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
@@ -41,26 +37,33 @@ export default function MarketData() {
       const f = await api<MarketFile>('/market-data', { method: 'POST', json: body });
       setData((d) => ({ ...d, items: [f, ...d.items] }));
       setSymbol('');
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+      refresh(); // the balance changed (or a refund was issued)
+    }
   }
 
   async function remove(f: MarketFile) {
-    if (!confirm(`Delete ${f.filename}?`)) return;
+    if (!confirm(`Delete ${fullName(f)}?`)) return;
     await api(`/market-data/${f.id}`, { method: 'DELETE' }).catch((e) => setError(e.message));
     load().catch(() => {});
   }
 
+  const noCredits = balance !== null && balance < cost;
   return (
     <>
-      <h1>Market data (Alpha Vantage)</h1>
+      <h1>Market data</h1>
       <p className="muted">
-        Downloaded files are shared with all signed-in users. Pick them in the <Link to="/">workbench</Link> next to your own datasets.
+        Downloaded files are shared with all signed-in users, and using them is free. Pick them in the <Link to="/benchmark">benchmark</Link> next to your own datasets.
       </p>
+
+      <CreditWarning need={cost} action="downloading a new file" />
 
       <div className="card">
         <h2>Download new data</h2>
-        {!data.configured && <p className="error">Alpha Vantage is not configured on the server.</p>}
+        {!data.configured && <p className="error">Market data downloads are not configured on the server.</p>}
         <div className="row">
           <label>Type
             <select value={fn} onChange={(e) => setFn(e.target.value)}>
@@ -78,29 +81,31 @@ export default function MarketData() {
             <label>History
               <select value={outputsize} onChange={(e) => setOutputsize(e.target.value)}>
                 <option value="compact">Last 100 days</option>
-                <option value="full">Full history (may need premium)</option>
+                <option value="full">Full history (may need a premium plan)</option>
               </select>
             </label>
           )}
-          <button disabled={busy || !data.configured || !symbol.trim() || (crypto && !market.trim())} onClick={download}>
-            {busy ? 'Downloading…' : 'Download'}
+          <button disabled={busy || noCredits || !data.configured || !symbol.trim() || (crypto && !market.trim())} onClick={download}>
+            {busy ? 'Downloading…' : `Download (${cost} credits)`}
           </button>
         </div>
         {error && <p className="error">{error}</p>}
       </div>
 
       <div className="card">
-        <h2>Downloaded files</h2>
+        <div className="row between">
+          <h2>Downloaded files</h2>
+          {controls}
+        </div>
         <table>
           <thead>
-            <tr><th>Symbol</th><th>Market</th><th>Options</th><th>Downloaded</th><th>Type</th><th>Rows</th><th>Size</th><th /></tr>
+            <tr><th>Symbol</th><th>Market</th><th>Downloaded</th><th>Type</th><th>Rows</th><th>Size</th><th /></tr>
           </thead>
           <tbody>
-            {data.items.map((f) => (
+            {shown.map((f) => (
               <tr key={f.id}>
                 <td><button className="link" onClick={() => setViewing(f)}>{f.symbol}</button></td>
                 <td>{f.market ?? '–'}</td>
-                <td>{Object.entries(f.params).map(([k, v]) => `${k}=${v}`).join(', ') || '–'}</td>
                 <td>{fmtDate(f.created_at)}</td>
                 <td>{kindLabel(f)}</td>
                 <td>{f.row_count ?? '–'}</td>
@@ -108,7 +113,7 @@ export default function MarketData() {
                 <td className="actions">{f.mine && <button className="link danger" onClick={() => remove(f)}>Delete</button>}</td>
               </tr>
             ))}
-            {data.items.length === 0 && <tr><td colSpan={8} className="muted">Nothing downloaded yet.</td></tr>}
+            {shown.length === 0 && <tr><td colSpan={7} className="muted">{filtered ? 'No files match the filter.' : 'Nothing downloaded yet.'}</td></tr>}
           </tbody>
         </table>
       </div>
