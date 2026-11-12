@@ -27,7 +27,7 @@ export interface MarketList { configured: boolean; items: MarketFile[] }
 export interface Run {
   id: string; dataset_id: string | null; dataset_ids: string[]; market_data_ids: string[]; prompt: string; code: string | null;
   status: 'running' | 'success' | 'error'; stdout: string | null; stderr: string | null;
-  result: string | null; duration_ms: number | null; created_at: string;
+  result: string | null; duration_ms: number | null; credits_charged: number; created_at: string;
   files: { id: string; filename: string; content_type: string; size_bytes: number }[];
 }
 export interface Stats {

@@ -6,6 +6,8 @@ import { config } from '../config.js';
 import { requireUser } from '../auth.js';
 import { HttpError } from '../errors.js';
 import { deleteBlob, getBlob, putBlob } from '../storage.js';
+import { grantCredits, spendCredits } from '../credits.js';
+import { PRICING } from '../pricing.js';
 import { fetchSeries, makeFilename, publicParams, requestSchema, alphaVantageConfigured, toTable } from '../alphavantage.js';
 
 // Never selects blob_path or the requester: users only see what was downloaded, not where it is stored or by whom.
@@ -22,27 +24,36 @@ export default async function marketDataRoutes(app: FastifyInstance) {
   app.post('/market-data', { preHandler: requireUser, config: { rateLimit: { max: 10, timeWindow: '1 minute' } } }, async (req) => {
     const user = req.user!;
     const r = requestSchema.parse(req.body);
-    if (!alphaVantageConfigured()) throw new HttpError(503, 'Alpha Vantage is not configured');
+    if (!alphaVantageConfigured()) throw new HttpError(503, 'Market data downloads are not configured');
 
-    // Alpha Vantage quotas are tiny and shared by everyone, so cap downloads per user.
+    // Provider quotas are small and shared by everyone, so cap downloads per user.
     const used = (
       await q("select count(*)::int n from market_data where requested_by = $1 and created_at > now() - interval '24 hours'", [user.id])
     ).rows[0].n;
     if (used >= config.ALPHAVANTAGE_DAILY_DOWNLOAD_LIMIT) throw new HttpError(429, 'Daily download limit reached');
 
-    const { data, rows: rowCount } = await fetchSeries(r);
+    const label = `${r.symbol}${'market' in r ? ' / ' + r.market : ''}`;
+    const paid = await spendCredits(user.id, PRICING.downloadCost, 'download', `Downloaded ${label}`, { function: r.function });
+    if (!paid) throw new HttpError(402, `You need ${PRICING.downloadCost} credits to download a new file`);
     const id = crypto.randomUUID();
-    const filename = makeFilename(r, new Date());
-    const blobPath = `market/${id}/${filename}`;
-    await putBlob(blobPath, data);
-    const market = 'market' in r ? r.market : null;
-    const ins = await q(
-      `insert into market_data(id, function, symbol, market, params, filename, blob_path, size_bytes, row_count, requested_by)
-       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) returning id`,
-      [id, r.function, r.symbol, market, JSON.stringify(publicParams(r)), filename, blobPath, data.length, rowCount, user.id],
-    );
-    await q("insert into usage_events(user_id, kind, meta) values ($1, 'alphavantage_download', $2)", [user.id, JSON.stringify({ function: r.function })]);
-    return (await q(`${LIST} where id = $2`, [user.id, ins.rows[0].id])).rows[0];
+    try {
+      const { data, rows: rowCount } = await fetchSeries(r);
+      const filename = makeFilename(r, new Date());
+      const blobPath = `market/${id}/${filename}`;
+      await putBlob(blobPath, data);
+      const market = 'market' in r ? r.market : null;
+      await q(
+        `insert into market_data(id, function, symbol, market, params, filename, blob_path, size_bytes, row_count, requested_by)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [id, r.function, r.symbol, market, JSON.stringify(publicParams(r)), filename, blobPath, data.length, rowCount, user.id],
+      );
+    } catch (e) {
+      // Nothing was delivered, so the user gets the credits back.
+      await grantCredits(user.id, PRICING.downloadCost, 'refund', `Refund: download of ${label} failed`).catch((err) => req.log.error(err, 'refund failed'));
+      throw e;
+    }
+    await q("insert into usage_events(user_id, kind, meta) values ($1, 'market_download', $2)", [user.id, JSON.stringify({ function: r.function })]);
+    return (await q(`${LIST} where id = $2`, [user.id, id])).rows[0];
   });
 
   // Viewer: the stored JSON as a table (newest first, first 500 rows).

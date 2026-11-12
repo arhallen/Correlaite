@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, type Dataset, type MarketFile, type MarketList, type Run } from '../api';
-import { fmtSize, fullName } from './MarketData';
+import { api, ApiError, type Dataset, type MarketFile, type MarketList, type Run } from '../api';
+import { fmtSize, fullName } from '../format';
+import { CreditWarning, useCredits } from '../credits';
+import { useMarketFilter } from '../marketFilter';
 import FileViewer from './FileViewer';
 
 export default function Workbench() {
@@ -10,6 +12,10 @@ export default function Workbench() {
   const [market, setMarket] = useState<MarketFile[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [selectedMarket, setSelectedMarket] = useState<string[]>([]);
+  const [datasetSort, setDatasetSort] = useState('newest');
+  const [noCredits, setNoCredits] = useState(false);
+  const { balance, pricing, refresh } = useCredits();
+  const { shown: shownMarket, controls: marketControls, filtered: marketFiltered } = useMarketFilter(market);
   const [viewing, setViewing] = useState<{ base: string; title: string } | null>(null);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
@@ -45,28 +51,44 @@ export default function Workbench() {
   const toggle = (set: typeof setSelected, id: string) =>
     set((x) => (x.includes(id) ? x.filter((i) => i !== id) : [...x, id]));
   const count = selected.length + selectedMarket.length;
+  const minToRun = pricing?.minToRun ?? 15;
+  const sortedDatasets = [...datasets].sort((a, b) =>
+    datasetSort === 'name' ? a.filename.localeCompare(b.filename) : datasetSort === 'oldest' ? a.created_at.localeCompare(b.created_at) : b.created_at.localeCompare(a.created_at));
 
   async function run() {
     setBusy(true);
     setError('');
+    setNoCredits(false);
     try {
       const r = await api<Run>('/runs', { method: 'POST', json: { prompt, datasetIds: selected, marketDataIds: selectedMarket } });
       setRuns((x) => [r, ...x]);
       setPrompt('');
-    } catch (e) { setError((e as Error).message); }
-    finally { setBusy(false); }
+    } catch (e) {
+      setError((e as Error).message);
+      setNoCredits(e instanceof ApiError && e.status === 402);
+    } finally {
+      setBusy(false);
+      refresh(); // the run cost credits
+    }
   }
 
   return (
     <div className="grid">
       <aside className="card">
-        <h2>Datasets</h2>
+        <div className="row between" style={{ marginTop: 0 }}>
+          <h2>Datasets</h2>
+          <select value={datasetSort} onChange={(e) => setDatasetSort(e.target.value)} aria-label="Sort datasets">
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="name">Name A–Z</option>
+          </select>
+        </div>
         <label className="upload">
           + Upload file
           <input type="file" hidden accept=".csv,.tsv,.json,.xlsx,.parquet,.txt" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
         </label>
         <ul className="list">
-          {datasets.map((d) => (
+          {sortedDatasets.map((d) => (
             <li key={d.id} className={selected.includes(d.id) ? 'sel' : ''}>
               <label className="check">
                 <input type="checkbox" checked={selected.includes(d.id)} onChange={() => toggle(setSelected, d.id)} />
@@ -80,8 +102,9 @@ export default function Workbench() {
         </ul>
 
         <h2 className="section">Market data <Link to="/market-data" className="small">manage</Link></h2>
+        {marketControls}
         <ul className="list">
-          {market.map((f) => (
+          {shownMarket.map((f) => (
             <li key={f.id} className={selectedMarket.includes(f.id) ? 'sel' : ''}>
               <label className="check">
                 <input type="checkbox" checked={selectedMarket.includes(f.id)} onChange={() => toggle(setSelectedMarket, f.id)} />
@@ -90,12 +113,13 @@ export default function Workbench() {
               <button className="link" onClick={() => setViewing({ base: `/market-data/${f.id}`, title: fullName(f) })}>View</button>
             </li>
           ))}
-          {market.length === 0 && <li className="muted">Nothing downloaded yet.</li>}
+          {shownMarket.length === 0 && <li className="muted">{marketFiltered ? 'No files match the filter.' : 'Nothing downloaded yet.'}</li>}
         </ul>
       </aside>
 
       <section>
         <div className="card">
+          <CreditWarning need={minToRun} action="running code" />
           <h2>Ask</h2>
           <textarea
             rows={4}
@@ -109,17 +133,17 @@ export default function Workbench() {
               : datasets.length || market.length ? 'No files selected — tick one or more in the lists to attach them.' : 'No dataset attached.'}
           </p>
           <div className="row">
-            <button disabled={busy || !prompt.trim()} onClick={run}>{busy ? 'Running…' : 'Generate & run'}</button>
-            <span className="muted">Code runs in an isolated sandbox with no internet access.</span>
+            <button disabled={busy || !prompt.trim() || (balance !== null && balance < minToRun)} onClick={run}>{busy ? 'Running…' : 'Generate & run'}</button>
+            <span className="muted">Code runs in an isolated sandbox with no internet access. {pricing ? `A run costs ${pricing.runBase} credits + ${pricing.runPerSecond} per second.` : ''}</span>
           </div>
-          {error && <p className="error">{error}</p>}
+          {error && <p className="error">{error}{noCredits && <> <Link to="/credits">Get more credits</Link></>}</p>}
         </div>
 
         {runs.map((r) => (
           <article className="card" key={r.id}>
             <div className="row between">
               <strong>{r.prompt}</strong>
-              <span className={`pill ${r.status}`}>{r.status}{r.duration_ms ? ` · ${(r.duration_ms / 1000).toFixed(1)}s` : ''}</span>
+              <span className={`pill ${r.status}`}>{r.status}{r.duration_ms ? ` · ${(r.duration_ms / 1000).toFixed(1)}s` : ''}{r.credits_charged ? ` · −${r.credits_charged} credits` : ''}</span>
             </div>
             {r.code && <details><summary>Generated code</summary><pre>{r.code}</pre></details>}
             {r.stdout && <pre className="out">{r.stdout}</pre>}

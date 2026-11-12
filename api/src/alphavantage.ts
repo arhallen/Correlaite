@@ -49,14 +49,14 @@ export function makeFilename(r: AvRequest, at: Date): string {
 
 /** Alpha Vantage reports errors, rate limits and premium-only calls with HTTP 200 and a small JSON body. */
 export function classifyBody(body: any): { ok: true; rows: number } | { ok: false; message: string } {
-  if (!body || typeof body !== 'object') return { ok: false, message: 'Unexpected response from Alpha Vantage' };
-  if (typeof body['Error Message'] === 'string') return { ok: false, message: 'Alpha Vantage did not recognise this symbol or request' };
+  if (!body || typeof body !== 'object') return { ok: false, message: 'Unexpected response from the data provider' };
+  if (typeof body['Error Message'] === 'string') return { ok: false, message: 'The data provider did not recognise this symbol or request' };
   const note = body.Note ?? body.Information;
   if (typeof note === 'string') {
-    return { ok: false, message: /premium/i.test(note) ? 'This request needs a premium Alpha Vantage plan' : 'Alpha Vantage rate limit reached, try again later' };
+    return { ok: false, message: /premium/i.test(note) ? 'This request needs a premium data plan' : 'The data provider's rate limit was reached, try again later' };
   }
   const series = Object.entries(body).find(([k, v]) => k.startsWith('Time Series') && v && typeof v === 'object');
-  if (!series) return { ok: false, message: 'Alpha Vantage returned no time series' };
+  if (!series) return { ok: false, message: 'The data provider returned no time series' };
   return { ok: true, rows: Object.keys(series[1] as object).length };
 }
 
@@ -64,21 +64,21 @@ export const alphaVantageConfigured = () => Boolean(config.ALPHAVANTAGE_API_KEY)
 
 export async function fetchSeries(r: AvRequest): Promise<{ data: Buffer; rows: number }> {
   const key = config.ALPHAVANTAGE_API_KEY;
-  if (!key) throw new HttpError(503, 'Alpha Vantage is not configured');
+  if (!key) throw new HttpError(503, 'Market data downloads are not configured');
   let res: Response;
   try {
     res = await fetch(buildUrl(r, key), { signal: AbortSignal.timeout(30_000) });
   } catch {
     // Deliberately no error details: fetch errors can include the request URL, which contains the key.
-    throw new HttpError(502, 'Could not reach Alpha Vantage');
+    throw new HttpError(502, 'Could not reach the data provider');
   }
-  if (!res.ok) throw new HttpError(502, `Alpha Vantage request failed (${res.status})`);
+  if (!res.ok) throw new HttpError(502, `Data provider request failed (${res.status})`);
   const data = Buffer.from(await res.arrayBuffer());
   let body: unknown;
   try {
     body = JSON.parse(data.toString('utf8'));
   } catch {
-    throw new HttpError(502, 'Alpha Vantage returned invalid JSON');
+    throw new HttpError(502, 'The data provider returned invalid JSON');
   }
   const c = classifyBody(body);
   if (!c.ok) throw new HttpError(502, c.message);
