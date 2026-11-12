@@ -73,6 +73,8 @@ export default function Workbench() {
   }
 
   return (
+    <>
+    <h1>Benchmark</h1>
     <div className="grid">
       <aside className="card">
         <div className="row between" style={{ marginTop: 0 }}>
@@ -171,5 +173,6 @@ export default function Workbench() {
       </section>
       {viewing && <FileViewer base={viewing.base} title={viewing.title} onClose={() => setViewing(null)} />}
     </div>
+    </>
   );
 }
