@@ -82,8 +82,13 @@ export default async function runRoutes(app: FastifyInstance) {
       picked.push(...datasetIds.map((id) => found.find((f) => f.id === id)!));
     }
     if (marketDataIds.length) {
-      const found = (await q('select id, filename, blob_path from market_data where id = any($1)', [marketDataIds])).rows;
-      if (found.length !== marketDataIds.length) throw new HttpError(404, 'Market data file not found');
+      const found = (
+        await q(
+          'select m.id, m.filename, m.blob_path from market_data m join market_data_access a on a.market_data_id = m.id and a.user_id = $2 where m.id = any($1)',
+          [marketDataIds, user.id],
+        )
+      ).rows;
+      if (found.length !== marketDataIds.length) throw new HttpError(403, 'You can only use files you downloaded or bought');
       picked.push(...marketDataIds.map((id) => found.find((f) => f.id === id)!));
     }
     // Distinct names inside the sandbox, so two files called data.csv do not overwrite each other.

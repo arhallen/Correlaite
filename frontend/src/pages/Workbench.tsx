@@ -15,7 +15,8 @@ export default function Workbench() {
   const [datasetSort, setDatasetSort] = useState('newest');
   const [noCredits, setNoCredits] = useState(false);
   const { balance, pricing, refresh } = useCredits();
-  const { shown: shownMarket, controls: marketControls, filtered: marketFiltered } = useMarketFilter(market);
+  const ownedMarket = market.filter((f) => f.owned);
+  const { shown: shownMarket, controls: marketControls, filtered: marketFiltered } = useMarketFilter(ownedMarket);
   const [viewing, setViewing] = useState<{ base: string; title: string } | null>(null);
   const [prompt, setPrompt] = useState('');
   const [busy, setBusy] = useState(false);
@@ -25,28 +26,10 @@ export default function Workbench() {
     const [d, r, m] = await Promise.all([api<Dataset[]>('/datasets'), api<Run[]>('/runs'), api<MarketList>('/market-data')]);
     setDatasets(d);
     setMarket(m.items);
-    setSelectedMarket((x) => x.filter((id) => m.items.some((f) => f.id === id)));
+    setSelectedMarket((x) => x.filter((id) => m.items.some((f) => f.id === id && f.owned)));
     setRuns(r);
   }, []);
   useEffect(() => { load().catch((e) => setError(e.message)); }, [load]);
-
-  async function upload(file: File | undefined) {
-    if (!file) return;
-    setError('');
-    const form = new FormData();
-    form.append('file', file);
-    try {
-      const d = await api<Dataset>('/datasets', { method: 'POST', body: form });
-      setDatasets((x) => [d, ...x]);
-      setSelected((x) => [...x, d.id]);
-    } catch (e) { setError((e as Error).message); }
-  }
-
-  async function remove(id: string) {
-    await api(`/datasets/${id}`, { method: 'DELETE' }).catch((e) => setError(e.message));
-    setSelected((x) => x.filter((i) => i !== id));
-    load().catch(() => {});
-  }
 
   const toggle = (set: typeof setSelected, id: string) =>
     set((x) => (x.includes(id) ? x.filter((i) => i !== id) : [...x, id]));
@@ -78,17 +61,13 @@ export default function Workbench() {
     <div className="grid">
       <aside className="card">
         <div className="row between" style={{ marginTop: 0 }}>
-          <h2>Datasets</h2>
+          <h2>Your uploads</h2>
           <select value={datasetSort} onChange={(e) => setDatasetSort(e.target.value)} aria-label="Sort datasets">
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
             <option value="name">Name A–Z</option>
           </select>
         </div>
-        <label className="upload">
-          + Upload file
-          <input type="file" hidden accept=".csv,.tsv,.json,.xlsx,.parquet,.txt" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ''; }} />
-        </label>
         <ul className="list">
           {sortedDatasets.map((d) => (
             <li key={d.id} className={selected.includes(d.id) ? 'sel' : ''}>
@@ -97,13 +76,12 @@ export default function Workbench() {
                 <span>{d.filename} <span className="muted">{fmtSize(d.size_bytes)}</span></span>
               </label>
               <button className="link" onClick={() => setViewing({ base: `/datasets/${d.id}`, title: d.filename })}>View</button>
-              <button className="link danger" onClick={() => remove(d.id)} aria-label={`Delete ${d.filename}`}>✕</button>
             </li>
           ))}
-          {datasets.length === 0 && <li className="muted">No datasets yet.</li>}
+          {datasets.length === 0 && <li className="muted">No uploads yet.</li>}
         </ul>
 
-        <h2 className="section">Market data <Link to="/market-data" className="small">manage</Link></h2>
+        <h2 className="section">Your market data <Link to="/data-management" className="small">Data management</Link></h2>
         {marketControls}
         <ul className="list">
           {shownMarket.map((f) => (
@@ -115,7 +93,7 @@ export default function Workbench() {
               <button className="link" onClick={() => setViewing({ base: `/market-data/${f.id}`, title: fullName(f) })}>View</button>
             </li>
           ))}
-          {shownMarket.length === 0 && <li className="muted">{marketFiltered ? 'No files match the filter.' : 'Nothing downloaded yet.'}</li>}
+          {shownMarket.length === 0 && <li className="muted">{marketFiltered ? 'No files match the filter.' : <>No files yet. Get some in <Link to="/data-management">Data management</Link>.</>}</li>}
         </ul>
       </aside>
 
@@ -131,8 +109,8 @@ export default function Workbench() {
           />
           <p className="muted">
             {count
-              ? `Attached: ${[...datasets.filter((d) => selected.includes(d.id)).map((d) => d.filename), ...market.filter((f) => selectedMarket.includes(f.id)).map((f) => fullName(f))].join(', ')}`
-              : datasets.length || market.length ? 'No files selected — tick one or more in the lists to attach them.' : 'No dataset attached.'}
+              ? `Attached: ${[...datasets.filter((d) => selected.includes(d.id)).map((d) => d.filename), ...ownedMarket.filter((f) => selectedMarket.includes(f.id)).map((f) => fullName(f))].join(', ')}`
+              : datasets.length || ownedMarket.length ? 'No files selected — tick one or more in the lists to attach them.' : 'No dataset attached.'}
           </p>
           <div className="row">
             <button disabled={busy || !prompt.trim() || (balance !== null && balance < minToRun)} onClick={run}>{busy ? 'Running…' : 'Generate & run'}</button>
