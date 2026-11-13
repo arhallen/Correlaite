@@ -13,25 +13,25 @@ import argparse, datetime as dt, hashlib, json, os, re, subprocess, sys
 QUERIES = [
     ("api-exception", "API exception",
      """AppExceptions | where TimeGenerated > ago({lb}m) and AppRoleName == 'correlaite-api'
-        | summarize n=count(), last=max(TimeGenerated), sample=any(tostring(Details)) by ExceptionType, OuterMessage, OperationName""",
+        | summarize n=count(), lastSeen=max(TimeGenerated), sample=any(tostring(Details)) by ExceptionType, OuterMessage, OperationName""",
      ["ExceptionType", "OuterMessage", "OperationName"], "sample"),
     ("api-5xx", "API request failed (5xx)",
      """AppRequests | where TimeGenerated > ago({lb}m) and AppRoleName == 'correlaite-api' and toint(ResultCode) >= 500
-        | summarize n=count(), last=max(TimeGenerated), sample=any(Url) by Name, ResultCode""",
+        | summarize n=count(), lastSeen=max(TimeGenerated), sample=any(Url) by Name, ResultCode""",
      ["Name", "ResultCode"], "sample"),
     ("api-log", "API error log",
      """ContainerAppConsoleLogs_CL | where TimeGenerated > ago({lb}m) and Log_s startswith '{{'
         | extend j = parse_json(Log_s) | where toint(j.level) >= 50
         | extend msg = tostring(j.msg), err = tostring(j.err.message)
-        | summarize n=count(), last=max(TimeGenerated), sample=any(Log_s) by msg, err""",
+        | summarize n=count(), lastSeen=max(TimeGenerated), sample=any(Log_s) by msg, err""",
      ["msg", "err"], "sample"),
     ("web-exception", "Browser exception",
      """AppExceptions | where TimeGenerated > ago({lb}m) and AppRoleName == 'correlaite-web'
-        | summarize n=count(), last=max(TimeGenerated), sample=any(tostring(Details)) by ExceptionType, OuterMessage""",
+        | summarize n=count(), lastSeen=max(TimeGenerated), sample=any(tostring(Details)) by ExceptionType, OuterMessage""",
      ["ExceptionType", "OuterMessage"], "sample"),
     ("email-delivery", "Email not delivered",
      """ACSEmailStatusUpdateOperational | where TimeGenerated > ago({lb}m) and DeliveryStatus !in~ ('Delivered', 'Expanded')
-        | summarize n=count(), last=max(TimeGenerated), sample=any(tostring(pack_all())) by DeliveryStatus""",
+        | summarize n=count(), lastSeen=max(TimeGenerated), sample=any(tostring(pack_all())) by DeliveryStatus""",
      ["DeliveryStatus"], "sample"),
 ]
 
@@ -97,7 +97,7 @@ def main() -> int:
             continue
         for r in rows:
             key = " | ".join(str(r.get(k) or "") for k in keys)
-            findings.append((kind, label, key, int(r.get("n") or 1), r.get("last"), str(r.get(sample_col) or ""), q))
+            findings.append((kind, label, key, int(r.get("n") or 1), r.get("lastSeen"), str(r.get(sample_col) or ""), q))
 
     print(f"[{a.env}] {len(findings)} distinct error(s) in the last {a.lookback} minutes")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
