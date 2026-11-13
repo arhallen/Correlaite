@@ -1,0 +1,80 @@
+name: Error triage
+
+# Looks for new errors in Azure (API exceptions, 5xx responses, error logs, browser exceptions, undelivered email)
+# and opens a GitHub issue labelled `bug` + `auto-detected` for each new one. See scripts/error-triage.py.
+on:
+  schedule:
+    - cron: '17 * * * *' # hourly; every run is billed (about a minute per environment), so tighten with care
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to check
+        type: choice
+        options: [all, staging, production]
+        default: all
+      lookback_minutes:
+        description: How far back to look
+        default: '60'
+      dry_run:
+        description: Only list what would be reported, create no issues
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+
+concurrency:
+  group: error-triage
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      envs: ${{ steps.envs.outputs.envs }}
+    steps:
+      - id: envs
+        run: |
+          CHOICE="${{ inputs.environment || 'all' }}"
+          if [ "$CHOICE" = "all" ]; then echo 'envs=["staging","production"]' >> "$GITHUB_OUTPUT"; else echo "envs=[\"$CHOICE\"]" >> "$GITHUB_OUTPUT"; fi
+
+  triage:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: ${{ fromJson(needs.prepare.outputs.envs) }}
+    environment: ${{ matrix.environment }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Install Azure CLI log-analytics extension
+        run: az extension add --name log-analytics --only-show-errors
+
+      - name: Ensure labels exist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create bug --color d73a4a --description "Something isn't working" --force --repo "${{ github.repository }}"
+          gh label create auto-detected --color 5319e7 --description "Opened by the error triage workflow" --force --repo "${{ github.repository }}"
+          gh label create "env:${{ matrix.environment }}" --color 0e8a16 --force --repo "${{ github.repository }}"
+
+      - name: Find errors and open issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 scripts/error-triage.py \
+            --env "${{ matrix.environment }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --repo "${{ github.repository }}" \
+            --lookback "${{ inputs.lookback_minutes || '60' }}" \
+            ${{ inputs.dry_run && '--dry-run' || '' }}
