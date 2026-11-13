@@ -30,7 +30,7 @@ QUERIES = [
         | summarize n=count(), lastSeen=max(TimeGenerated), sample=any(tostring(Details)) by ExceptionType, OuterMessage""",
      ["ExceptionType", "OuterMessage"], "sample"),
     ("email-delivery", "Email not delivered",
-     """ACSEmailStatusUpdateOperational | where TimeGenerated > ago({lb}m) and DeliveryStatus != '' and DeliveryStatus !in~ ('Delivered', 'Expanded')
+     """ACSEmailStatusUpdateOperational | where TimeGenerated > ago({lb}m) and DeliveryStatus in~ ('Failed', 'Bounced', 'Suppressed', 'Quarantined', 'FilteredSpam')
         | summarize n=count(), lastSeen=max(TimeGenerated), sample=any(tostring(pack_all())) by DeliveryStatus""",
      ["DeliveryStatus"], "sample"),
 ]
