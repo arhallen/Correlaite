@@ -15,7 +15,7 @@ infra/      Bicep                      -> everything in Azure, one resource grou
 | Concern | Service |
 |---|---|
 | Frontend | Static Web Apps; `/api/*` is a linked backend to the API, so the app is same-origin (no CORS, first-party cookies) |
-| API | Container Apps (scale-to-zero in staging, 1 replica in production) |
+| API | Container Apps (minimum 1 replica in every environment, so no cold starts) |
 | Database | PostgreSQL Flexible Server (Burstable) |
 | Datasets | Blob Storage, private, accessed by managed identity |
 | Magic links | Azure Communication Services Email |

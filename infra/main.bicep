@@ -49,7 +49,6 @@ param alphaVantageApiKey string = ''
 var suffix = uniqueString(resourceGroup().id)
 var base = '${namePrefix}-${environmentName}'
 var compact = toLower('${namePrefix}${take(environmentName, 4)}${take(suffix, 6)}')
-var isProd = environmentName == 'production'
 
 // Built-in role definition IDs
 var roleAcrPull = '7f951dda-4ed3-4680-a7ca-43fe172d538d'
@@ -383,7 +382,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        minReplicas: isProd ? 1 : 0
+        minReplicas: 1 // always warm: avoids the cold-start delay of scale-to-zero
         maxReplicas: 5
         rules: [
           {
