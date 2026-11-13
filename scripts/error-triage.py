@@ -86,6 +86,16 @@ def main() -> int:
         return 1
     workspace = ws.stdout.strip()
 
+    # Coverage line: proves the monitor can actually see data (a missing/empty table would otherwise look like "no errors").
+    coverage = []
+    for table in ["AppRequests", "AppExceptions", "ContainerAppConsoleLogs_CL", "ACSEmailSendMailOperational", "ACSEmailStatusUpdateOperational"]:
+        try:
+            rows = kql(workspace, f"{table} | where TimeGenerated > ago({a.lookback}m) | summarize n=count()")
+            coverage.append(f"{table}={int(rows[0]['n']) if rows else 'no table'}")
+        except RuntimeError as e:
+            coverage.append(f"{table}=query failed")
+    print(f"[{a.env}] rows seen in the last {a.lookback} min: " + ", ".join(coverage))
+
     findings = []  # (kind, label, key text, count, last, sample, query)
     for kind, label, query, keys, sample_col in QUERIES:
         q = query.format(lb=a.lookback)
@@ -140,7 +150,7 @@ def main() -> int:
             print("    reason:", redact(sample).replace("\n", " ")[:500])
     if summary:
         with open(summary, "a") as f:
-            f.write(f"### {a.env}: {len(findings)} distinct error(s)\n" + ("\n".join(lines) or "No errors found.") + "\n")
+            f.write(f"### {a.env}: {len(findings)} distinct error(s)\nRows seen: {', '.join(coverage)}\n\n" + ("\n".join(lines) or "No errors found.") + "\n")
     return 0
 
 
