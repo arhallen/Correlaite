@@ -136,6 +136,8 @@ def main() -> int:
                     status = f"known (#{i['number']}, {i['state'].lower()})"
         lines.append(f"- {title} — {status}")
         print(f"  {title} — {status}")
+        if kind == "monitor":
+            print("    reason:", redact(sample).replace("\n", " ")[:500])
     if summary:
         with open(summary, "a") as f:
             f.write(f"### {a.env}: {len(findings)} distinct error(s)\n" + ("\n".join(lines) or "No errors found.") + "\n")
