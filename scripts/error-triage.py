@@ -12,7 +12,7 @@ import argparse, datetime as dt, hashlib, json, os, re, subprocess, sys
 # kind, human label, KQL ({lb} = lookback minutes), columns that identify the error, column with a sample to show
 QUERIES = [
     ("api-exception", "API exception",
-     """AppExceptions | where TimeGenerated > ago({lb}m) and AppRoleName == 'correlaite-api' and ExceptionType != 'ContainerAlreadyExists'
+     """AppExceptions | where TimeGenerated > ago({lb}m) and AppRoleName == 'correlaite-api' and ExceptionType != 'ContainerAlreadyExists' and not(ExceptionType == 'CredentialUnavailableError' and OuterMessage has 'EnvironmentCredential')
         | summarize n=count(), lastSeen=max(TimeGenerated), sample=any(tostring(Details)) by ExceptionType, OuterMessage, OperationName""",
      ["ExceptionType", "OuterMessage", "OperationName"], "sample"),
     ("api-5xx", "API request failed (5xx)",
