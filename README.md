@@ -35,6 +35,13 @@ Sandbox safety: `/api/runs` returns 503 unless a sandbox pool is configured; gen
 - **Page visits:** the browser SDK (`frontend/src/telemetry.ts`, role `correlaite-web`) records page views, route changes and `/api` calls. The connection string is passed at build time as `VITE_APPINSIGHTS_CONNECTION_STRING` from the Bicep output.
 - **Email (Communication Services):** a diagnostic setting sends Send Mail, Delivery Status Update and User Engagement logs to the Log Analytics workspace, which powers the Insights view on the resource.
 
+### Error triage (errors become GitHub issues)
+
+`.github/workflows/error-triage.yml` runs hourly (and on demand: Actions -> Error triage -> Run workflow, with an optional dry run) for staging and production. It logs in to Azure with the same
+OIDC identity as the deploy, searches the Log Analytics workspace for API exceptions, 5xx responses, API error logs, browser exceptions and undelivered email (`scripts/error-triage.py`), and opens an issue
+labelled `bug`, `auto-detected` and `env:<name>` per distinct error (title ends in `[fp:...]`). A known open issue is left alone; a closed one is reopened if the error happens again afterwards.
+Emails, tokens and keys are redacted before anything is written to GitHub. A broken monitoring query becomes an issue too.
+
 ## Data management
 
 Signed-in users manage data on the *Data management* page: upload private files (free), retrieve new market data (5 credits), or buy one-time access to a file someone else already retrieved (1 credit).
