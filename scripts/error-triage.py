@@ -12,7 +12,7 @@ import argparse, datetime as dt, hashlib, json, os, re, subprocess, sys
 # kind, human label, KQL ({lb} = lookback minutes), columns that identify the error, column with a sample to show
 QUERIES = [
     ("api-exception", "API exception",
-     """AppExceptions | where TimeGenerated > ago({lb}m) and AppRoleName == 'correlaite-api'
+     """AppExceptions | where TimeGenerated > ago({lb}m) and AppRoleName == 'correlaite-api' and ExceptionType != 'ContainerAlreadyExists'
         | summarize n=count(), lastSeen=max(TimeGenerated), sample=any(tostring(Details)) by ExceptionType, OuterMessage, OperationName""",
      ["ExceptionType", "OuterMessage", "OperationName"], "sample"),
     ("api-5xx", "API request failed (5xx)",
@@ -78,6 +78,7 @@ def main() -> int:
     ap.add_argument("--lookback", type=int, default=60)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--max-new", type=int, default=10)
+    ap.add_argument("--query", default="", help="run one ad-hoc KQL query (redacted output) instead of triage")
     a = ap.parse_args()
 
     ws = run(["az", "monitor", "log-analytics", "workspace", "show", "-g", a.resource_group, "-n", f"correlaite-{a.env}-law", "--query", "customerId", "-o", "tsv"])
@@ -95,6 +96,13 @@ def main() -> int:
         except RuntimeError as e:
             coverage.append(f"{table}=query failed")
     print(f"[{a.env}] rows seen in the last {a.lookback} min: " + ", ".join(coverage))
+
+    if a.query:
+        rows = kql(workspace, a.query)
+        print(f"[{a.env}] {len(rows)} row(s)")
+        for r in rows[:50]:
+            print(redact(json.dumps(r, default=str))[:1500])
+        return 0
 
     findings = []  # (kind, label, key text, count, last, sample, query)
     for kind, label, query, keys, sample_col in QUERIES:

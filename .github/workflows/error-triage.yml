@@ -15,6 +15,9 @@ on:
       lookback_minutes:
         description: How far back to look
         default: '60'
+      query:
+        description: Optional - run this ad-hoc log query (KQL) instead of the triage (output is redacted)
+        default: ''
       dry_run:
         description: Only list what would be reported, create no issues
         type: boolean
@@ -71,10 +74,12 @@ jobs:
       - name: Find errors and open issues
         env:
           GH_TOKEN: ${{ github.token }}
+          ADHOC_QUERY: ${{ inputs.query }}
         run: |
           python3 scripts/error-triage.py \
             --env "${{ matrix.environment }}" \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --repo "${{ github.repository }}" \
             --lookback "${{ inputs.lookback_minutes || '60' }}" \
-            ${{ inputs.dry_run && '--dry-run' || '' }}
+            ${{ inputs.dry_run && '--dry-run' || '' }} \
+            --query "$ADHOC_QUERY"
