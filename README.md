@@ -35,18 +35,18 @@ Sandbox safety: `/api/runs` returns 503 unless a sandbox pool is configured; gen
 - **Page visits:** the browser SDK (`frontend/src/telemetry.ts`, role `correlaite-web`) records page views, route changes and `/api` calls. The connection string is passed at build time as `VITE_APPINSIGHTS_CONNECTION_STRING` from the Bicep output.
 - **Email (Communication Services):** a diagnostic setting sends Send Mail, Delivery Status Update and User Engagement logs to the Log Analytics workspace, which powers the Insights view on the resource.
 
-## Market data
+## Data management
 
-Signed-in users can download daily stock and crypto series on the *Market data* page. Downloads are stored as JSON in Blob Storage and listed in a shared catalog
-(symbol, market, download time, STOCK or CRYPTO). Provider adapter: `api/src/alphavantage.ts`; its key (`ALPHAVANTAGE_API_KEY`, from the GitHub secret of the same name)
-lives only on the server and never reaches the browser. More providers can be added next to it. Downloads are limited per user (`ALPHAVANTAGE_DAILY_DOWNLOAD_LIMIT`, default 10/day).
-In the *Benchmark* page, users pick catalog files and/or their own private uploads (multi-select) and can filter by symbol/type and sort (latest first).
+Signed-in users manage data on the *Data management* page: upload private files (free), retrieve new market data (5 credits), or buy one-time access to a file someone else already retrieved (1 credit).
+Files are stored as JSON in Blob Storage in a shared catalog (symbol, market, download time, STOCK or CRYPTO); `market_data_access` records who owns which file, and only owners can use or view it.
+Provider adapter: `api/src/alphavantage.ts`; its key (`ALPHAVANTAGE_API_KEY`, from the GitHub secret of the same name) lives only on the server. More providers can be added next to it.
+Retrievals are limited per user (`ALPHAVANTAGE_DAILY_DOWNLOAD_LIMIT`, default 10/day). The *Benchmark* page offers only files you uploaded or own, with filter (symbol/type) and sorting (latest first).
 
 ## Credits
 
-Every account starts with 100 credits (`api/src/pricing.ts` holds all prices). Using existing files is free; downloading a new file costs 5; a sandbox run costs 10 plus 5 per started
-second (a run needs at least 15 credits to start, and charging never takes the balance below zero). Every change is recorded in `credit_transactions`. The *Credit management* page shows
-the balance and history. Buying is **mocked** (`POST /api/credits/purchase` grants credits without charging); replace `mockPayment` in `api/src/routes/credits.ts` with a real payment provider before launch.
+Every account starts with 100 credits (`api/src/pricing.ts` holds all prices). Using files you own is free; retrieving a new file costs 5; buying access to an existing file costs 1 (once); a sandbox run costs 10 plus 5 per started
+second, at most 25 (a run needs at least 15 credits to start, and charging never takes the balance below zero). Every change is recorded in `credit_transactions`. The *Credit management* page shows
+the balance and history. Packs (USD): $5 = 50 credits, $10 = 110, $100 = 1250. Buying is **mocked** (`POST /api/credits/purchase` grants credits without charging); replace `mockPayment` in `api/src/routes/credits.ts` with a real payment provider before launch.
 
 ## Development without installing anything locally
 

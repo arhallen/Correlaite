@@ -7,7 +7,7 @@ import Login from './pages/Login';
 import Verify from './pages/Verify';
 import Workbench from './pages/Workbench';
 import Admin from './pages/Admin';
-import MarketData from './pages/MarketData';
+import DataManagement from './pages/DataManagement';
 import Landing from './pages/Landing';
 
 function Protected({ children, admin }: { children: ReactElement; admin?: boolean }) {
@@ -39,7 +39,7 @@ export default function App() {
           {!user && <Link to="/login">Sign in</Link>}
           {user && (
             <>
-              <NavLink to="/market-data">Market data</NavLink>
+              <NavLink to="/data-management">Data management</NavLink>
               <NavLink to="/benchmark">Benchmark</NavLink>
               <NavLink to="/credits">Credit management</NavLink>
             </>
@@ -61,7 +61,8 @@ export default function App() {
           <Route path="/" element={<Home />} />
           <Route path="/benchmark" element={<Protected><Workbench /></Protected>} />
           <Route path="/credits" element={<Protected><Credits /></Protected>} />
-          <Route path="/market-data" element={<Protected><MarketData /></Protected>} />
+          <Route path="/data-management" element={<Protected><DataManagement /></Protected>} />
+          <Route path="/market-data" element={<Navigate to="/data-management" replace />} />
           <Route path="/admin" element={<Protected admin><Admin /></Protected>} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

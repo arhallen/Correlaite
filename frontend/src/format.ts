@@ -2,7 +2,7 @@ import type { MarketFile } from './api';
 
 export const fmtSize = (b: number) => (b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
 export const fmtDate = (s: string) => new Date(s).toLocaleString();
-export const fmtMoney = (cents: number) => new Intl.NumberFormat('nl-NL', { style: 'currency', currency: 'EUR' }).format(cents / 100);
+export const fmtMoney = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 
 export const kindLabel = (f: MarketFile) => (f.function === 'DIGITAL_CURRENCY_DAILY' ? 'CRYPTO' : 'STOCK');
 /** Symbol first, then market and any other parameters. `outputsize` is an internal detail and never shown. */

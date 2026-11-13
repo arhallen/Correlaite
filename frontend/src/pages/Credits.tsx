@@ -59,9 +59,10 @@ export default function Credits() {
           <h2>How credits work</h2>
           <ul className="plain">
             <li>New accounts start with <strong>{pr.initialCredits}</strong> credits.</li>
-            <li>Using files that are already downloaded, and your own uploads, is <strong>free</strong>.</li>
-            <li>Downloading a new market data file costs <strong>{pr.downloadCost}</strong> credits.</li>
-            <li>Every code run costs <strong>{pr.runBase}</strong> credits plus <strong>{pr.runPerSecond}</strong> credits per second it runs, rounded up to whole seconds.</li>
+            <li>Your own uploads, and files you already own, are <strong>free</strong> to use and view.</li>
+            <li>Retrieving new data from the market costs <strong>{pr.downloadCost}</strong> credits.</li>
+            <li>A file someone else already retrieved costs <strong>{pr.accessCost}</strong> credit, once. After that it is yours to use and view as often as you like.</li>
+            <li>Every code run costs <strong>{pr.runBase}</strong> credits plus <strong>{pr.runPerSecond}</strong> credits per second it runs, rounded up to whole seconds, and never more than <strong>{pr.runMax}</strong>.</li>
             <li>Code can only be run with at least <strong>{pr.minToRun}</strong> credits.</li>
           </ul>
         </div>

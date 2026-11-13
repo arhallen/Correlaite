@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { api } from './api';
 import { useAuth } from './auth';
 
-export interface Pricing { initialCredits: number; downloadCost: number; runBase: number; runPerSecond: number; minToRun: number }
+export interface Pricing { initialCredits: number; downloadCost: number; accessCost: number; runBase: number; runPerSecond: number; runMax: number; minToRun: number }
 interface CreditsState { balance: number | null; pricing: Pricing | null; refresh: () => Promise<void> }
 
 const Ctx = createContext<CreditsState>({ balance: null, pricing: null, refresh: async () => {} });

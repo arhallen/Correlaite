@@ -12,8 +12,17 @@ import { fetchSeries, makeFilename, publicParams, requestSchema, alphaVantageCon
 
 // Never selects blob_path or the requester: users only see what was downloaded, not where it is stored or by whom.
 const LIST = `select id, function, symbol, market, params, filename, size_bytes::float8 as size_bytes, row_count, created_at,
-                     coalesce(requested_by = $1, false) as mine
+                     coalesce(requested_by = $1, false) as mine,
+                     exists(select 1 from market_data_access a where a.market_data_id = market_data.id and a.user_id = $1) as owned
                 from market_data`;
+
+async function hasAccess(userId: string, id: string): Promise<boolean> {
+  return (await q('select 1 from market_data_access where user_id = $1 and market_data_id = $2', [userId, id])).rowCount! > 0;
+}
+
+async function requireAccess(userId: string, id: string) {
+  if (!(await hasAccess(userId, id))) throw new HttpError(403, 'Buy this file for 1 credit to use or view it');
+}
 
 export default async function marketDataRoutes(app: FastifyInstance) {
   app.get('/market-data', { preHandler: requireUser }, async (req) => {
@@ -47,6 +56,7 @@ export default async function marketDataRoutes(app: FastifyInstance) {
          values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [id, r.function, r.symbol, market, JSON.stringify(publicParams(r)), filename, blobPath, data.length, rowCount, user.id],
       );
+      await q("insert into market_data_access(user_id, market_data_id, source) values ($1, $2, 'download')", [user.id, id]);
     } catch (e) {
       // Nothing was delivered, so the user gets the credits back.
       await grantCredits(user.id, PRICING.downloadCost, 'refund', `Refund: download of ${label} failed`).catch((err) => req.log.error(err, 'refund failed'));
@@ -56,11 +66,32 @@ export default async function marketDataRoutes(app: FastifyInstance) {
     return (await q(`${LIST} where id = $2`, [user.id, id])).rows[0];
   });
 
+  // One-time purchase of access to a file someone else already downloaded. Afterwards it can be used and viewed freely.
+  app.post('/market-data/:id/access', { preHandler: requireUser, config: { rateLimit: { max: 30, timeWindow: '1 minute' } } }, async (req) => {
+    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
+    const user = req.user!;
+    const file = (await q('select symbol, market, function from market_data where id = $1', [id])).rows[0];
+    if (!file) throw new HttpError(404, 'Not found');
+    if (await hasAccess(user.id, id)) return { ok: true, charged: 0 };
+
+    const label = `${file.symbol}${file.market ? ' / ' + file.market : ''}`;
+    const paid = await spendCredits(user.id, PRICING.accessCost, 'access', `Bought access to ${label}`, { meta: { marketDataId: id } });
+    if (!paid) throw new HttpError(402, `You need ${PRICING.accessCost} credit to buy this file`);
+    const ins = await q("insert into market_data_access(user_id, market_data_id, source) values ($1, $2, 'purchase') on conflict do nothing returning 1", [user.id, id]);
+    if (!ins.rows[0]) {
+      // Bought twice at the same moment: keep one purchase and refund the other.
+      await grantCredits(user.id, PRICING.accessCost, 'refund', `Refund: ${label} was already yours`).catch((e) => req.log.error(e, 'refund failed'));
+      return { ok: true, charged: 0 };
+    }
+    return { ok: true, charged: PRICING.accessCost };
+  });
+
   // Viewer: the stored JSON as a table (newest first, first 500 rows).
   app.get('/market-data/:id/preview', { preHandler: requireUser }, async (req) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const row = (await q('select filename, blob_path from market_data where id = $1', [id])).rows[0];
     if (!row) throw new HttpError(404, 'Not found');
+    await requireAccess(req.user!.id, id);
     const table = toTable(JSON.parse((await getBlob(row.blob_path)).toString('utf8')));
     if (!table) throw new HttpError(422, 'This file has no time series to show');
     return { filename: row.filename, kind: 'table', ...table };
@@ -70,6 +101,7 @@ export default async function marketDataRoutes(app: FastifyInstance) {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const row = (await q('select filename, blob_path from market_data where id = $1', [id])).rows[0];
     if (!row) throw new HttpError(404, 'Not found');
+    await requireAccess(req.user!.id, id);
     return reply
       .header('Content-Type', 'application/json')
       .header('Content-Disposition', `attachment; filename="${row.filename.replace(/"/g, '')}"`)
@@ -77,16 +109,18 @@ export default async function marketDataRoutes(app: FastifyInstance) {
       .send(await getBlob(row.blob_path));
   });
 
-  // Catalog files are shared, so only the person who downloaded one (or an admin) may remove it.
+  // The person who downloaded a file (or an admin) can delete it, unless other people bought access to it.
   app.delete('/market-data/:id', { preHandler: requireUser }, async (req) => {
     const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
     const user = req.user!;
-    const { rows } = await q(
-      'delete from market_data where id = $1 and (requested_by = $2 or $3) returning blob_path',
-      [id, user.id, user.role === 'admin'],
-    );
-    if (!rows[0]) throw new HttpError(404, 'Not found');
-    await deleteBlob(rows[0].blob_path).catch((e) => req.log.warn(e, 'blob delete failed'));
+    const row = (await q('select requested_by, blob_path from market_data where id = $1', [id])).rows[0];
+    if (!row || (row.requested_by !== user.id && user.role !== 'admin')) throw new HttpError(404, 'Not found');
+    if (user.role !== 'admin') {
+      const others = (await q('select count(*)::int n from market_data_access where market_data_id = $1 and user_id <> $2', [id, user.id])).rows[0].n;
+      if (others > 0) throw new HttpError(409, 'Other users have bought this file, so it cannot be deleted');
+    }
+    await q('delete from market_data where id = $1', [id]);
+    await deleteBlob(row.blob_path).catch((e) => req.log.warn(e, 'blob delete failed'));
     return { ok: true };
   });
 }
