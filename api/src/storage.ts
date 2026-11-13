@@ -1,6 +1,6 @@
 import { BlobServiceClient, type ContainerClient } from '@azure/storage-blob';
 import { DefaultAzureCredential } from '@azure/identity';
-import { config } from './config.js';
+import { config, isProd } from './config.js';
 import { HttpError } from './errors.js';
 
 let containerPromise: Promise<ContainerClient> | null = null;
@@ -16,7 +16,9 @@ function getContainer(): Promise<ContainerClient> {
       throw new HttpError(503, 'Storage is not configured');
     }
     const c = svc.getContainerClient(config.STORAGE_CONTAINER);
-    await c.createIfNotExists();
+    // In Azure the container is created by infra/main.bicep; only create it for local Azurite.
+    // (Calling createIfNotExists on every start logged a harmless 409 exception each time.)
+    if (!isProd) await c.createIfNotExists();
     return c;
   })().catch((e) => {
     containerPromise = null;
