@@ -5,16 +5,21 @@ import { q } from '../db.js';
 import { config } from '../config.js';
 import { requireUser } from '../auth.js';
 import { HttpError } from '../errors.js';
-import { deleteBlob, getBlob, putBlob } from '../storage.js';
+import { getBlob, putBlob } from '../storage.js';
 import { grantCredits, spendCredits } from '../credits.js';
 import { PRICING } from '../pricing.js';
 import { fetchSeries, makeFilename, publicParams, requestSchema, alphaVantageConfigured, toTable } from '../alphavantage.js';
 
 // Never selects blob_path or the requester: users only see what was downloaded, not where it is stored or by whom.
-const LIST = `select id, function, symbol, market, params, filename, size_bytes::float8 as size_bytes, row_count, created_at,
+const COLS = `id, function, symbol, market, params, filename, size_bytes::float8 as size_bytes, row_count, created_at,
                      coalesce(requested_by = $1, false) as mine,
-                     exists(select 1 from market_data_access a where a.market_data_id = market_data.id and a.user_id = $1) as owned
-                from market_data`;
+                     exists(select 1 from market_data_access a where a.market_data_id = market_data.id and a.user_id = $1) as owned`;
+const LIST = `select ${COLS} from market_data`;
+
+// A download can exist in several versions (same function, symbol, market; `outputsize` is not shown to users, so it does not
+// make a different download). Only the newest version is listed; older ones stay in storage as an archive.
+const KEY = "function, symbol, coalesce(market, ''), (params - 'outputsize')";
+const LATEST = `select * from (select distinct on (${KEY}) ${COLS} from market_data order by ${KEY}, created_at desc) latest order by created_at desc limit 500`;
 
 async function hasAccess(userId: string, id: string): Promise<boolean> {
   return (await q('select 1 from market_data_access where user_id = $1 and market_data_id = $2', [userId, id])).rowCount! > 0;
@@ -26,7 +31,7 @@ async function requireAccess(userId: string, id: string) {
 
 export default async function marketDataRoutes(app: FastifyInstance) {
   app.get('/market-data', { preHandler: requireUser }, async (req) => {
-    const { rows } = await q(`${LIST} order by created_at desc limit 500`, [req.user!.id]);
+    const { rows } = await q(LATEST, [req.user!.id]);
     return { configured: alphaVantageConfigured(), items: rows };
   });
 
@@ -107,20 +112,5 @@ export default async function marketDataRoutes(app: FastifyInstance) {
       .header('Content-Disposition', `attachment; filename="${row.filename.replace(/"/g, '')}"`)
       .header('X-Content-Type-Options', 'nosniff')
       .send(await getBlob(row.blob_path));
-  });
-
-  // The person who downloaded a file (or an admin) can delete it, unless other people bought access to it.
-  app.delete('/market-data/:id', { preHandler: requireUser }, async (req) => {
-    const { id } = z.object({ id: z.string().uuid() }).parse(req.params);
-    const user = req.user!;
-    const row = (await q('select requested_by, blob_path from market_data where id = $1', [id])).rows[0];
-    if (!row || (row.requested_by !== user.id && user.role !== 'admin')) throw new HttpError(404, 'Not found');
-    if (user.role !== 'admin') {
-      const others = (await q('select count(*)::int n from market_data_access where market_data_id = $1 and user_id <> $2', [id, user.id])).rows[0].n;
-      if (others > 0) throw new HttpError(409, 'Other users have bought this file, so it cannot be deleted');
-    }
-    await q('delete from market_data where id = $1', [id]);
-    await deleteBlob(row.blob_path).catch((e) => req.log.warn(e, 'blob delete failed'));
-    return { ok: true };
   });
 }

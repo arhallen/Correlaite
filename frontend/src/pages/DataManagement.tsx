@@ -56,11 +56,6 @@ export default function DataManagement() {
     await api(`/market-data/${f.id}/access`, { method: 'POST' });
     setData((d) => ({ ...d, items: d.items.map((x) => (x.id === f.id ? { ...x, owned: true } : x)) }));
   });
-  const removeFile = (f: MarketFile) => act(`del-${f.id}`, async () => {
-    if (!confirm(`Delete ${fullName(f)}?`)) return;
-    await api(`/market-data/${f.id}`, { method: 'DELETE' });
-    await load();
-  });
   const upload = (file: File | undefined) => file && act('upload', async () => {
     const form = new FormData();
     form.append('file', file);
@@ -131,7 +126,7 @@ export default function DataManagement() {
           </label>
         </div>
         <table>
-          <thead><tr><th>File</th><th>Uploaded</th><th>Size</th><th /></tr></thead>
+          <thead><tr><th>File</th><th>Uploaded</th><th>Size</th></tr></thead>
           <tbody>
             {sortedDatasets.map((d) => (
               <tr key={d.id}>
@@ -152,7 +147,7 @@ export default function DataManagement() {
           {controls}
         </div>
 
-        <h3>Your files <span className="muted">(free to use and view)</span></h3>
+        <h3>Downloaded files <span className="muted">(yours: free to use and view; newest version only)</span></h3>
         <table>
           <thead><tr><th>Symbol</th><th>Market</th><th>Downloaded</th><th>Type</th><th>Rows</th><th>Size</th><th /></tr></thead>
           <tbody>
@@ -164,10 +159,9 @@ export default function DataManagement() {
                 <td>{kindLabel(f)}</td>
                 <td>{f.row_count ?? '–'}</td>
                 <td>{fmtSize(f.size_bytes)}</td>
-                <td className="actions">{f.mine && <button className="link danger" onClick={() => removeFile(f)}>Delete</button>}</td>
               </tr>
             ))}
-            {owned.length === 0 && <tr><td colSpan={7} className="muted">{filtered ? 'No files match the filter.' : 'You do not own any market data files yet.'}</td></tr>}
+            {owned.length === 0 && <tr><td colSpan={6} className="muted">{filtered ? 'No files match the filter.' : 'You do not own any market data files yet.'}</td></tr>}
           </tbody>
         </table>
 
